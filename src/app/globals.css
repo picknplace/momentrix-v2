@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --mx-bg: #0B0F1A;
+  --mx-topbar: #111827;
+  --mx-card: #161E2E;
+  --mx-border: #1F2D45;
+  --mx-border-light: #334155;
+  --mx-text: #E2E8F0;
+  --mx-text-secondary: #94A3B8;
+  --mx-text-muted: #64748B;
+  --mx-blue: #3B82F6;
+  --mx-cyan: #06B6D4;
+  --mx-green: #10B981;
+  --mx-amber: #F59E0B;
+  --mx-red: #E74C3C;
+  --mx-purple: #A78BFA;
+  --mx-indigo: #6366F1;
+}
+
+html {
+  font-size: 118%;
+}
+
+body {
+  background: var(--mx-bg);
+  color: var(--mx-text);
+  font-size: 14px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--mx-bg); }
+::-webkit-scrollbar-thumb { background: var(--mx-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--mx-border-light); }
+
+/* Toast animations */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}

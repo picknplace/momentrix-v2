@@ -1,24 +1,20 @@
 /**
- * CSV → Supabase PostgreSQL migration script
+ * CSV → D1 (SQLite) migration script
  * Usage: npm run migrate
  *
  * Prerequisites:
  *   1. Run exportAllSheets() in GAS to get CSV files
  *   2. Download CSV folder from Google Drive to ./scripts/data/
- *   3. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local
+ *   3. Create D1 database: wrangler d1 create momentrix-db
+ *   4. Update database_id in wrangler.toml
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const DATA_DIR = path.join(__dirname, 'data');
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Sheet name → table name mapping (snake_case)
 const SHEET_TO_TABLE: Record<string, string> = {
   ORDER_ITEMS: 'order_items',
   ORDER_ITEMS_ARCHIVE: 'order_items_archive',
@@ -90,6 +86,10 @@ function parseCSV(content: string): string[][] {
   return rows;
 }
 
+function escapeSQL(val: string): string {
+  return val.replace(/'/g, "''");
+}
+
 async function migrateTable(csvFile: string, tableName: string) {
   const content = fs.readFileSync(csvFile, 'utf-8');
   const rows = parseCSV(content);
@@ -103,24 +103,38 @@ async function migrateTable(csvFile: string, tableName: string) {
 
   console.log(`  ${tableName}: ${dataRows.length} rows...`);
 
-  // Insert in batches of 500
-  const BATCH = 500;
-  for (let i = 0; i < dataRows.length; i += BATCH) {
-    const batch = dataRows.slice(i, i + BATCH).map(row => {
-      const obj: Record<string, string> = {};
-      headers.forEach((h, idx) => {
-        if (row[idx] !== undefined && row[idx] !== '') {
-          obj[h] = row[idx];
-        }
-      });
-      return obj;
-    });
+  // Build SQL file for batch insert via wrangler
+  const sqlFile = path.join(DATA_DIR, `_import_${tableName}.sql`);
+  const stmts: string[] = [];
 
-    const { error } = await supabase.from(tableName).upsert(batch, { ignoreDuplicates: true });
-    if (error) {
-      console.error(`  ERROR ${tableName} batch ${i}: ${error.message}`);
+  for (const row of dataRows) {
+    const cols: string[] = [];
+    const vals: string[] = [];
+    headers.forEach((h, idx) => {
+      if (row[idx] !== undefined && row[idx] !== '') {
+        cols.push(h);
+        vals.push(`'${escapeSQL(row[idx])}'`);
+      }
+    });
+    if (cols.length > 0) {
+      stmts.push(`INSERT OR IGNORE INTO ${tableName} (${cols.join(',')}) VALUES (${vals.join(',')});`);
     }
   }
+
+  // Write SQL in chunks (D1 has statement limits per batch)
+  const CHUNK = 100;
+  for (let i = 0; i < stmts.length; i += CHUNK) {
+    const chunk = stmts.slice(i, i + CHUNK).join('\n');
+    fs.writeFileSync(sqlFile, chunk);
+    try {
+      execSync(`npx wrangler d1 execute momentrix-db --file=${sqlFile} --remote`, { stdio: 'pipe' });
+    } catch (e) {
+      console.error(`  ERROR ${tableName} batch ${i}: ${(e as Error).message?.substring(0, 200)}`);
+    }
+  }
+
+  // Cleanup temp file
+  if (fs.existsSync(sqlFile)) fs.unlinkSync(sqlFile);
 }
 
 async function main() {
@@ -130,10 +144,21 @@ async function main() {
     process.exit(1);
   }
 
+  // First, run the schema migration
+  const schemaFile = path.join(__dirname, '..', 'supabase', 'migrations', '00001_initial_schema.sql');
+  if (fs.existsSync(schemaFile)) {
+    console.log('Running schema migration...');
+    try {
+      execSync(`npx wrangler d1 execute momentrix-db --file=${schemaFile} --remote`, { stdio: 'inherit' });
+      console.log('Schema created.\n');
+    } catch (e) {
+      console.error('Schema migration error (may already exist):', (e as Error).message?.substring(0, 200));
+    }
+  }
+
   const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.csv'));
   console.log(`Found ${files.length} CSV files\n`);
 
-  // Migrate in dependency order (import_log before order_items, etc.)
   const ordered = [
     'CONFIG', 'USERS', 'SKU_MASTER', 'SKU_MAP', 'COST_MASTER',
     'IMPORT_LOG', 'ORDER_ITEMS', 'ORDER_ITEMS_ARCHIVE', 'ORDER_EVENTS',

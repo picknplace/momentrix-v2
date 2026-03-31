@@ -68,12 +68,12 @@ interface GoogleSearchItem {
 
 export async function searchGoogleImages(query: string, count = 3): Promise<string[]> {
   const rows = await queryAll<{ key: string; value: string }>(
-    "SELECT key, value FROM config_kv WHERE key IN ('GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX')"
+    "SELECT key, value FROM config_kv WHERE key IN ('GOOGLE_CSE_KEY', 'GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX')"
   );
   const cfg: Record<string, string> = {};
   for (const r of rows) cfg[r.key] = r.value;
 
-  const apiKey = cfg.GOOGLE_CSE_API_KEY;
+  const apiKey = cfg.GOOGLE_CSE_KEY || cfg.GOOGLE_CSE_API_KEY;
   const cx = cfg.GOOGLE_CSE_CX;
   if (!apiKey || !cx) return [];
 

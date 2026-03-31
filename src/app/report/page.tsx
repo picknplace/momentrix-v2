@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 export default function ReportPage() {
   return (
     <div className="min-h-screen bg-mx-bg text-mx-text flex items-center justify-center">

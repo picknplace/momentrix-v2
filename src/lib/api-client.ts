@@ -3,7 +3,7 @@
  * Automatically includes auth headers and handles auth errors.
  */
 
-type ApiResult<T = unknown> = { ok: true; data: T } | { ok: false; error: string; authError?: boolean };
+type ApiResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string; message?: string; authError?: boolean };
 
 export async function api<T = unknown>(
   endpoint: string,

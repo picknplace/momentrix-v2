@@ -5,6 +5,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 
+export const runtime = 'edge';
+
 interface User {
   user_id: string;
   email: string;

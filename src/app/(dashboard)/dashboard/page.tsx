@@ -8,6 +8,8 @@ import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api-client';
 import { formatKRW, formatNumber } from '@/lib/utils/currency';
 
+export const runtime = 'edge';
+
 interface DashKpi {
   totalOrders: number;
   totalQty: number;

@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api-client';
 
+export const runtime = 'edge';
+
 type Market = 'dailyshot' | 'kihya' | 'dmonkey';
 const MARKET_LABELS: Record<Market, string> = {
   dailyshot: 'Dailyshot',

@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 export default function Page() {
   return (
     <div className="text-mx-text-muted text-sm py-8 text-center">

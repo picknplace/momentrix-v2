@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "wrangler pages dev --compatibility-date=2024-09-23 --compatibility-flags=nodejs_compat -- next dev",
     "dev:next": "next dev",
-    "build": "npx @cloudflare/next-on-pages",
+    "build": "next build",
+    "pages:build": "npx @cloudflare/next-on-pages",
     "preview": "wrangler pages dev .vercel/output/static --compatibility-date=2024-09-23 --compatibility-flags=nodejs_compat",
-    "deploy": "npm run build && wrangler pages deploy .vercel/output/static",
+    "deploy": "npm run pages:build && wrangler pages deploy .vercel/output/static",
     "lint": "next lint",
     "db:create": "wrangler d1 create momentrix-db",
     "db:schema": "wrangler d1 execute momentrix-db --file=supabase/migrations/00001_initial_schema.sql --remote",

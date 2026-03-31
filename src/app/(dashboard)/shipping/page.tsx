@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api-client';
 
+export const runtime = 'edge';
+
 interface ShipOrder {
   id: number;
   market_id: string;

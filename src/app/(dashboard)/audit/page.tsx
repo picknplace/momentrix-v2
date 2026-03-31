@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
+export const runtime = 'edge';
+
 interface AuditEntry {
   log_id: string;
   timestamp: string;

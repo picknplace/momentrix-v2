@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
+export const runtime = 'edge';
+
 type Step = 'login' | 'otp' | 'signup';
 
 export default function LoginPage() {

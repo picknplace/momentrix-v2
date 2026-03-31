@@ -7,6 +7,8 @@ import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api-client';
 import { formatKRW } from '@/lib/utils/currency';
 
+export const runtime = 'edge';
+
 interface Order {
   id: number;
   import_id: string;

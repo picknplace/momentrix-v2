@@ -6,4 +6,4 @@ pages_build_output_dir = ".vercel/output/static"
 [[d1_databases]]
 binding = "DB"
 database_name = "momentrix-db"
-database_id = "" # Cloudflare D1 database ID — fill after `wrangler d1 create momentrix-db`
+database_id = "c1c03f2b-fe3e-418b-ba09-34af7e3a706f"

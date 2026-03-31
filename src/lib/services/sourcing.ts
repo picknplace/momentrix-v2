@@ -167,9 +167,12 @@ export async function generateProductDetail(input: ProductDetailInput) {
 }
 \`\`\`
 중요:
+- brewery.image_url: 양조장 외관/내부 사진 URL을 웹 검색으로 반드시 찾을 것. 공식 사이트, 위키피디아, 블로그 등에서 실제 이미지 URL(.jpg, .png, .webp)을 가져와야 함
+- product_detail.image_url: 제품 보틀 사진 URL을 웹 검색으로 반드시 찾을 것. 라쿠텐, 아마존재팬, 사케쇼핑몰 등에서 실제 이미지 URL을 가져와야 함
+- 이미지 URL은 반드시 https://로 시작하는 실제 접근 가능한 이미지 파일 URL이어야 함 (HTML 페이지 URL 금지)
+- brewery.official_url과 product_detail.official_url은 반드시 실제 공식 사이트 URL을 조사해서 넣을 것
 - detail_html 양조장 소개 섹션에 반드시 {{BREWERY_IMG}} 플레이스홀더를 포함할 것 (시스템이 실제 이미지로 교체함)
 - detail_html 제품 소개 섹션에 반드시 {{PRODUCT_IMG}} 플레이스홀더를 포함할 것 (시스템이 실제 이미지로 교체함)
-- brewery.official_url과 product_detail.official_url은 반드시 실제 공식 사이트 URL을 조사해서 넣을 것
 섹션 순서: 양조장→제품→수상→테이스팅→스펙→페어링`;
 
   const raw = await callClaude(systemPrompt, userPrompt, { useWebSearch: true, maxTokens: 16000, maxSearchUses: 5, model: model || 'haiku' });

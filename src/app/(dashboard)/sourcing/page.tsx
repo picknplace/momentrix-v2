@@ -70,6 +70,7 @@ export default function SourcingPage() {
     price: '',
     supply_price: '',
   });
+  const [pdModel, setPdModel] = useState<'haiku' | 'sonnet'>('haiku');
   const [pdLoading, setPdLoading] = useState(false);
   const [pdResult, setPdResult] = useState<ProductDetailResult | null>(null);
 
@@ -121,6 +122,7 @@ export default function SourcingPage() {
     const res = await api<{ result: ProductDetailResult }>('/api/sourcing', {
       action: 'generate_product_detail',
       ...pdForm,
+      model: pdModel,
       volume: pdForm.volume ? Number(pdForm.volume) : undefined,
       abv: pdForm.abv ? Number(pdForm.abv) : undefined,
       price: pdForm.price ? Number(pdForm.price) : undefined,
@@ -292,6 +294,17 @@ export default function SourcingPage() {
               onChange={e => setPdForm(p => ({ ...p, supply_price: e.target.value }))}
               placeholder="30000"
             />
+          </div>
+          <div>
+            <div className={labelCls}>AI 모델</div>
+            <select
+              className={inputCls}
+              value={pdModel}
+              onChange={e => setPdModel(e.target.value as 'haiku' | 'sonnet')}
+            >
+              <option value="haiku">기본 (Haiku) ~83원</option>
+              <option value="sonnet">고급 (Sonnet) ~276원</option>
+            </select>
           </div>
           <div className="flex items-end">
             <Button

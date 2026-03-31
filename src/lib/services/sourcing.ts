@@ -3,7 +3,7 @@
  * Migrated from GAS serverGenerateProductDetail, _scrapeImages, _scrapeProductImage
  */
 import { callClaude, extractJson } from '@/lib/services/claude';
-import { queryOne } from '@/lib/db';
+import { queryOne, queryAll } from '@/lib/db';
 
 // ── Image scraping helpers ──
 
@@ -56,6 +56,38 @@ export async function scrapeProductImage(productName: string): Promise<string | 
     return null;
   } catch {
     return null;
+  }
+}
+
+// ── Google Custom Search image search ──
+
+interface GoogleSearchItem {
+  link: string;
+  image?: { contextLink: string; width: number; height: number };
+}
+
+export async function searchGoogleImages(query: string, count = 3): Promise<string[]> {
+  const rows = await queryAll<{ key: string; value: string }>(
+    "SELECT key, value FROM config_kv WHERE key IN ('GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX')"
+  );
+  const cfg: Record<string, string> = {};
+  for (const r of rows) cfg[r.key] = r.value;
+
+  const apiKey = cfg.GOOGLE_CSE_API_KEY;
+  const cx = cfg.GOOGLE_CSE_CX;
+  if (!apiKey || !cx) return [];
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&searchType=image&num=${count}&imgSize=large&safe=active`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json() as { items?: GoogleSearchItem[] };
+    if (!data.items?.length) return [];
+    return data.items
+      .filter(item => item.image && item.image.width >= 200 && item.image.height >= 200)
+      .map(item => item.link);
+  } catch {
+    return [];
   }
 }
 
@@ -147,11 +179,13 @@ export async function generateProductDetail(input: ProductDetailInput) {
     result.supply_price = Number(supply_price) || 0;
   }
 
-  // Image scraping fallback
+  // Image acquisition chain: Claude → scrape official URL → Google Images → Rakuten
   try {
     const brewery = result.brewery as Record<string, string> | undefined;
     const productDetail = result.product_detail as Record<string, string> | undefined;
+    const breweryName = brewery?.name_ja || brewery?.name || '';
 
+    // Step 1: Scrape official URLs (if Claude found them)
     if (brewery?.official_url && !brewery.image_url) {
       const imgs = await scrapeImages(brewery.official_url, 3);
       if (imgs.length) brewery.image_url = imgs[0];
@@ -160,6 +194,18 @@ export async function generateProductDetail(input: ProductDetailInput) {
       const imgs = await scrapeImages(productDetail.official_url, 3);
       if (imgs.length) productDetail.image_url = imgs[0];
     }
+
+    // Step 2: Google Custom Search Images
+    if (brewery && !brewery.image_url && breweryName) {
+      const imgs = await searchGoogleImages(`${breweryName} 酒蔵 外観`, 2);
+      if (imgs.length) brewery.image_url = imgs[0];
+    }
+    if (productDetail && !productDetail.image_url) {
+      const imgs = await searchGoogleImages(`${product_name} 日本酒 ボトル`, 2);
+      if (imgs.length) productDetail.image_url = imgs[0];
+    }
+
+    // Step 3: Rakuten API fallback for product image
     if (productDetail && !productDetail.image_url) {
       const img = await scrapeProductImage(product_name);
       if (img) productDetail.image_url = img;

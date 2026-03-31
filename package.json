@@ -12,6 +12,8 @@
     "db:create": "wrangler d1 create momentrix-db",
     "db:schema": "wrangler d1 execute momentrix-db --file=supabase/migrations/00001_initial_schema.sql --remote",
     "db:schema:local": "wrangler d1 execute momentrix-db --file=supabase/migrations/00001_initial_schema.sql --local",
+    "db:cafe24": "wrangler d1 execute momentrix-db --file=supabase/migrations/00002_cafe24_tokens.sql --remote",
+    "db:cafe24:local": "wrangler d1 execute momentrix-db --file=supabase/migrations/00002_cafe24_tokens.sql --local",
     "migrate": "npx tsx scripts/migrate-data.ts"
   },
   "dependencies": {

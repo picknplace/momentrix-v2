@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose';
 
 const SESSION_COOKIE = 'mx_session';
 
-const publicPaths = ['/login', '/api/auth/login', '/api/auth/verify-otp'];
+const publicPaths = ['/login', '/api/auth/login', '/api/auth/verify-otp', '/api/cafe24/callback'];
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET || 'dev-secret-change-me';

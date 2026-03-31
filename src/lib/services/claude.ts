@@ -8,6 +8,7 @@ interface ClaudeOptions {
   useWebSearch?: boolean;
   maxSearchUses?: number;
   maxTokens?: number;
+  model?: 'haiku' | 'sonnet';
 }
 
 export async function callClaude(
@@ -19,8 +20,9 @@ export async function callClaude(
   const apiKey = (env as Record<string, string>).ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY가 설정되지 않았습니다.');
 
+  const modelId = opts.model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
   const body: Record<string, unknown> = {
-    model: 'claude-haiku-4-5-20251001',
+    model: modelId,
     max_tokens: opts.maxTokens || 16000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],

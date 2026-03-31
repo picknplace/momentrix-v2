@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
           abv: body.abv,
           price: body.price,
           supply_price: body.supply_price,
+          model: body.model,
         });
         return NextResponse.json({ ok: true, result });
       }

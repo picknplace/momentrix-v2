@@ -101,10 +101,11 @@ interface ProductDetailInput {
   abv?: string;
   price?: number;
   supply_price?: number;
+  model?: 'haiku' | 'sonnet';
 }
 
 export async function generateProductDetail(input: ProductDetailInput) {
-  const { product_name, product_name_kr, category, volume, abv, price, supply_price } = input;
+  const { product_name, product_name_kr, category, volume, abv, price, supply_price, model } = input;
   if (!product_name) throw new Error('상품명을 입력하세요.');
 
   const systemPrompt = `너는 일본 주류 전문 상품 상세페이지 작성자다. 한국 소비자 대상으로, 프리미엄 주류 쇼핑몰(키햐/데일리샷 스타일)에 올라갈 상품 상세 HTML을 생성한다.
@@ -171,7 +172,7 @@ export async function generateProductDetail(input: ProductDetailInput) {
 - brewery.official_url과 product_detail.official_url은 반드시 실제 공식 사이트 URL을 조사해서 넣을 것
 섹션 순서: 양조장→제품→수상→테이스팅→스펙→페어링`;
 
-  const raw = await callClaude(systemPrompt, userPrompt, { useWebSearch: true, maxTokens: 16000, maxSearchUses: 5 });
+  const raw = await callClaude(systemPrompt, userPrompt, { useWebSearch: true, maxTokens: 16000, maxSearchUses: 5, model: model || 'haiku' });
   const result = extractJson<Record<string, unknown>>(raw);
 
   if (price) {
@@ -256,6 +257,53 @@ export async function generateProductDetail(input: ProductDetailInput) {
 // ── Korean term normalization ──
 
 const TERM_REPLACEMENTS: [RegExp, string][] = [
+  // 한자 → 한글 (순서 중요: 긴 패턴 먼저)
+  [/純米大吟醸/g, '준마이 다이긴조'],
+  [/純米大吟醗/g, '준마이 다이긴조'],
+  [/순미 대吟醸/g, '준마이 다이긴조'],
+  [/순미대吟醸/g, '준마이 다이긴조'],
+  [/大吟醸/g, '다이긴조'],
+  [/대吟醸/g, '다이긴조'],
+  [/純米吟醸/g, '준마이 긴조'],
+  [/순미吟醸/g, '준마이 긴조'],
+  [/吟醸香/g, '긴조 향'],
+  [/吟醸/g, '긴조'],
+  [/純米酒/g, '준마이슈'],
+  [/純米/g, '준마이'],
+  [/本醸造/g, '혼조조'],
+  [/生酒/g, '나마자케'],
+  [/原酒/g, '겐슈'],
+  [/焼酎/g, '쇼추'],
+  [/泡盛/g, '아와모리'],
+  [/梅酒/g, '우메슈'],
+  [/日本酒度/g, '일본주도'],
+  [/일본酒度/g, '일본주도'],
+  [/日本酒/g, '일본주'],
+  [/酵母/g, '효모'],
+  [/酒蔵/g, '양조장'],
+  [/酒造/g, '주조'],
+  [/杜氏/g, '토지(양조장인)'],
+  [/蔵元/g, '양조장'],
+  [/蔵人/g, '양조사'],
+  [/蔵內/g, '양조장 내'],
+  [/蔵内/g, '양조장 내'],
+  [/仕込み水/g, '담금수'],
+  [/仕込み/g, '담금'],
+  [/精米歩合/g, '정미율'],
+  [/原料米/g, '원료쌀'],
+  [/원료米/g, '원료쌀'],
+  [/酒米/g, '주조용 쌀'],
+  [/新酒/g, '햇술'],
+  [/古酒/g, '숙성주'],
+  [/甘口/g, '달콤한 맛'],
+  [/辛口/g, '드라이한 맛'],
+  [/旨味/g, '감칠맛'],
+  [/敷地内/g, '부지 내'],
+  [/敷地內/g, '부지 내'],
+  [/品評会/g, '품평회'],
+  [/品評會/g, '품평회'],
+  [/金賞/g, '금상'],
+  // 한글 표기 통일
   [/순미대긴죠/g, '준마이 다이긴조'],
   [/순미 대긴죠/g, '준마이 다이긴조'],
   [/대긴죠/g, '다이긴조'],
@@ -277,8 +325,6 @@ const TERM_REPLACEMENTS: [RegExp, string][] = [
   [/신구/g, '드라이한 맛'],
   [/키레/g, '깔끔한 마무리'],
   [/후네시보리/g, '후네 압착'],
-  [/敷地内/g, '부지 내'],
-  [/敷地內/g, '부지 내'],
 ];
 
 function normalizeKoreanTerms(html: string): string {

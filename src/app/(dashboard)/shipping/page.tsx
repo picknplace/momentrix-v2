@@ -41,7 +41,7 @@ export default function ShippingPage() {
   const load = useCallback(async () => {
     setLoading(true);
     const res = await api<{ orders: ShipOrder[]; unshippedCount: UnshippedCount[] }>(
-      `/api/shipping?filter=${filter}`,
+      `shipping?filter=${filter}`,
     );
     if (res?.ok) {
       setOrders(res.orders || []);
@@ -63,7 +63,7 @@ export default function ShippingPage() {
       return;
     }
 
-    const res = await api<{ ok: boolean; message: string }>('/api/shipping', {
+    const res = await api<{ ok: boolean; message: string }>('shipping', {
       updates: [{
         order_id: order.order_id,
         sub_order_id: order.sub_order_id,

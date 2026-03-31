@@ -30,21 +30,23 @@ const SCOPES = [
   'mall.read_store',
 ].join(',');
 
-export function buildAuthUrl(): string {
-  const { mallId, clientId, redirectUri } = getCafe24Env();
+export function buildAuthUrl(overrideMallId?: string): string {
+  const { mallId: envMallId, clientId, redirectUri } = getCafe24Env();
+  const mallId = overrideMallId || envMallId;
   const base = `https://${mallId}.cafe24api.com/api/v2/oauth/authorize`;
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
     scope: SCOPES,
-    state: crypto.randomUUID().substring(0, 8),
+    state: mallId,  // pass mall_id in state so callback knows which mall
   });
   return `${base}?${params.toString()}`;
 }
 
-export async function exchangeToken(code: string) {
-  const { mallId, clientId, clientSecret, redirectUri } = getCafe24Env();
+export async function exchangeToken(code: string, overrideMallId?: string) {
+  const { mallId: envMallId, clientId, clientSecret, redirectUri } = getCafe24Env();
+  const mallId = overrideMallId || envMallId;
   const tokenUrl = `https://${mallId}.cafe24api.com/api/v2/oauth/token`;
 
   const res = await fetch(tokenUrl, {

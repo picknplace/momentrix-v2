@@ -88,14 +88,14 @@ export default function SourcingPage() {
 
   const loadCosts = useCallback(async () => {
     setCostsLoading(true);
-    const res = await api<{ costs: CostRow[] }>('/api/cost-master');
+    const res = await api<{ costs: CostRow[] }>('cost-master');
     if (res?.ok) setCosts(res.costs || []);
     setCostsLoading(false);
   }, []);
 
   const loadFx = useCallback(async () => {
     setFxMsg('조회 중…');
-    const res = await api<ExchangeRate>('/api/exchange-rate');
+    const res = await api<ExchangeRate>('exchange-rate');
     if (res?.ok) {
       setFx({ date: res.date, usd: res.usd, jpy100: res.jpy100 });
       setFxMsg('');
@@ -119,7 +119,7 @@ export default function SourcingPage() {
     }
     setPdLoading(true);
     setPdResult(null);
-    const res = await api<{ result: ProductDetailResult }>('/api/sourcing', {
+    const res = await api<{ result: ProductDetailResult }>('sourcing', {
       action: 'generate_product_detail',
       ...pdForm,
       model: pdModel,
@@ -150,7 +150,7 @@ export default function SourcingPage() {
       toast('SKU를 입력하세요.', 'warn');
       return;
     }
-    const res = await api<{ ok: boolean; message: string }>('/api/cost-master', {
+    const res = await api<{ ok: boolean; message: string }>('cost-master', {
       action: 'upsert',
       ...editRow,
     });
@@ -165,7 +165,7 @@ export default function SourcingPage() {
   };
 
   const onCostDelete = async (sku: string) => {
-    const res = await api<{ ok: boolean; message: string }>('/api/cost-master', {
+    const res = await api<{ ok: boolean; message: string }>('cost-master', {
       action: 'delete',
       master_sku: sku,
     });

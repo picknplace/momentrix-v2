@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const error = url.searchParams.get('error');
+  const state = url.searchParams.get('state');  // mall_id passed via state
 
   if (error) {
     return new NextResponse(renderHtml(false, `인증 거부: ${error}`), {
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await exchangeToken(code);
+    const result = await exchangeToken(code, state || undefined);
     return new NextResponse(
       renderHtml(true, `Cafe24 연동 완료! (scopes: ${Array.isArray(result.scopes) ? result.scopes.join(', ') : result.scopes})`),
       { headers: { 'Content-Type': 'text/html; charset=utf-8' } },

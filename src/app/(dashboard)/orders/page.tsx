@@ -58,7 +58,7 @@ export default function OrdersPage() {
     if (dateFrom) params.set('dateFrom', dateFrom);
     if (dateTo) params.set('dateTo', dateTo);
 
-    const res = await api<{ orders: Order[]; total: number }>(`/api/orders?${params}`);
+    const res = await api<{ orders: Order[]; total: number }>(`orders?${params}`);
     if (res?.ok) {
       setOrders(res.orders || []);
       setTotal(res.total || 0);
@@ -71,7 +71,7 @@ export default function OrdersPage() {
   const doCancel = async () => {
     if (!cancelTarget) return;
     const orderId = cancelTarget.market_id === 'kihya' ? cancelTarget.sub_order_id : cancelTarget.order_id;
-    const res = await api<{ ok: boolean; message: string }>('/api/orders', {
+    const res = await api<{ ok: boolean; message: string }>('orders', {
       action: 'cancel',
       market_id: cancelTarget.market_id,
       order_id: orderId,

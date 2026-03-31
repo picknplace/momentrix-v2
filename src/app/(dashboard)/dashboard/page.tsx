@@ -55,8 +55,11 @@ function getDateRange(q: QuickFilter): { from: string; to: string } {
 
   if (q === 0) return { from: '', to: '' };
   if (q === 'month') {
-    const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    return { from, to };
+    const y = now.getFullYear(), m = now.getMonth() + 1;
+    const from = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const monthTo = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { from, to: monthTo };
   }
   const d = new Date(now.getTime() - (q as number) * 86400000);
   return { from: d.toISOString().substring(0, 10), to };
@@ -84,7 +87,7 @@ export default function DashboardPage() {
       daily: DailyRow[];
       byMarket: MarketRow[];
       topSkus: SkuRow[];
-    }>(`/api/dashboard?${params}`);
+    }>(`dashboard?${params}`);
 
     if (res?.ok) {
       setKpi(res.kpi);

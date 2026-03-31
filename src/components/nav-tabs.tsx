@@ -20,6 +20,7 @@ const tabs: Tab[] = [
   { href: '/invoice-kh', label: 'KH인보이스' },
   { href: '/sourcing', label: '소싱' },
   { href: '/marketing', label: '마케팅' },
+  { href: '/report', label: '리포트' },
   { href: '/audit', label: '감사로그', adminOnly: true },
   { href: '/users', label: '사용자관리', adminOnly: true },
 ];

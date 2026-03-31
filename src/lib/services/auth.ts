@@ -118,7 +118,7 @@ export async function sendOtpEmail(to: string, otp: string): Promise<void> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Momentrix <noreply@momentrix.kr>',
+      from: 'Momentrix <noreply@momentrix.co.kr>',
       to,
       subject: '[Momentrix] 인증코드',
       text: `인증코드: ${otp}\n\n5분 이내에 입력해주세요.\n요청하지 않은 경우 무시하세요.`,

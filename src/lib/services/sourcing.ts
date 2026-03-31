@@ -38,13 +38,23 @@ export async function scrapeImages(url: string, maxCount = 5): Promise<string[]>
 }
 
 export async function scrapeProductImage(productName: string): Promise<string | null> {
-  const row = await queryOne<{ value: string }>("SELECT value FROM config_kv WHERE key = 'RAKUTEN_APP_ID'");
-  const appId = row?.value;
+  const rows = await queryAll<{ key: string; value: string }>(
+    "SELECT key, value FROM config_kv WHERE key IN ('RAKUTEN_APP_ID', 'RAKUTEN_ACCESS_KEY')"
+  );
+  const cfg: Record<string, string> = {};
+  for (const r of rows) cfg[r.key] = r.value;
+  const appId = cfg.RAKUTEN_APP_ID;
+  const accessKey = cfg.RAKUTEN_ACCESS_KEY;
   if (!appId) return null;
 
   try {
-    const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?applicationId=${appId}&keyword=${encodeURIComponent(productName)}&hits=1&imageFlag=1`;
-    const res = await fetch(url);
+    const url = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?applicationId=${appId}${accessKey ? `&accessKey=${accessKey}` : ''}&keyword=${encodeURIComponent(productName)}&hits=1&imageFlag=1`;
+    const res = await fetch(url, {
+      headers: {
+        'Origin': 'https://momentrix-v2.pages.dev',
+        'Referer': 'https://momentrix-v2.pages.dev/',
+      },
+    });
     if (!res.ok) return null;
     const data = await res.json() as { Items?: Array<{ Item: { mediumImageUrls?: Array<{ imageUrl: string }>; smallImageUrls?: Array<{ imageUrl: string }> } }> };
     if (data.Items?.[0]?.Item) {

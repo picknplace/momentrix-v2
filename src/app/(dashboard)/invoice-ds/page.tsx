@@ -47,7 +47,7 @@ export default function InvoiceDSPage() {
     const lastDay = new Date(parseInt(year), parseInt(mon), 0).getDate();
     const to = `${year}-${mon}-${String(lastDay).padStart(2, '0')}`;
 
-    const res = await api<{ rows: InvoiceRow[] }>('/api/orders', {
+    const res = await api<{ rows: InvoiceRow[] }>('orders', {
       action: 'get_invoice_ds',
       from,
       to,

@@ -36,7 +36,7 @@ export default function UploadPage() {
   const [imports, setImports] = useState<ImportRow[]>([]);
 
   const loadImports = useCallback(async () => {
-    const res = await api<{ imports: ImportRow[] }>('/api/imports');
+    const res = await api<{ imports: ImportRow[] }>('imports');
     if (res?.ok) setImports(res.imports || []);
   }, []);
 
@@ -84,7 +84,7 @@ export default function UploadPage() {
         importId?: string;
         count?: number;
         duplicate?: boolean;
-      }>('/api/upload', { marketId: market, fileName, sheetData: fileData });
+      }>('upload', { marketId: market, fileName, sheetData: fileData });
 
       if (res?.ok) {
         toast(res.message, 'success');
@@ -105,7 +105,7 @@ export default function UploadPage() {
 
   const onRollback = async (importId: string) => {
     if (!confirm(`${importId} 를 롤백하시겠습니까?`)) return;
-    const res = await api<{ ok: boolean; message: string }>('/api/orders', {
+    const res = await api<{ ok: boolean; message: string }>('orders', {
       action: 'rollback',
       import_id: importId,
       reason: '수동 롤백',

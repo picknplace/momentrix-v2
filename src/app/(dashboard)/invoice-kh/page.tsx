@@ -49,7 +49,7 @@ export default function InvoiceKHPage() {
     if (!dateFrom || !dateTo) { toast('날짜를 선택해주세요.', 'error'); return; }
     setLoading(true);
 
-    const res = await api<{ rows: KhOrderRow[] }>('/api/orders', {
+    const res = await api<{ rows: KhOrderRow[] }>('orders', {
       action: 'get_invoice_kh',
       from: dateFrom,
       to: dateTo,

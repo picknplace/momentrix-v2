@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
 
   const rows = await queryAll(
     `SELECT id, market_id, sales_date, order_id, sub_order_id, product_name_raw, qty,
-            recipient_name, tracking_no, ship_date, address, postal_code, phone, mobile
+            recipient_name, tracking_no, ship_date, address, postal_code, phone, mobile,
+            pantos_ord_id, hawb_no, delivery_status, delivery_status_dt
      FROM order_items ${where}
      ORDER BY sales_date DESC LIMIT ?`,
     ...params, limit,

@@ -438,66 +438,11 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* ═══════════ Mixpanel Section ═══════════ */}
-          <div className="border-t border-mx-border pt-4 mt-4">
-            <div className="flex items-center gap-3 mb-3">
-              <h2 className="text-base font-bold text-mx-text">데일리샷 (Mixpanel)</h2>
-              {mpCachedAt && (
-                <span className="text-[10px] text-mx-text-secondary">
-                  캐시: {mpCachedAt.substring(0, 16).replace('T', ' ')}
-                </span>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => loadMixpanel(true)} disabled={mpLoading}>
-                {mpLoading ? '로딩...' : '새로고침'}
-              </Button>
-            </div>
-
-            {mpData ? (
-              <>
-                {/* Mixpanel KPI cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <KpiCard label="어제 결제건수" value={formatNumber(mpData['어제_결제건수'] ?? 0)} accent="blue" />
-                  <KpiCard label="어제 결제금액" value={formatKRW(mpData['어제_결제금액'] ?? 0)} accent="blue" />
-                  <KpiCard label="이번달 결제건수" value={formatNumber(mpData['이번달_결제건수'] ?? 0)} accent="purple" />
-                  <KpiCard label="이번달 결제금액" value={formatKRW(mpData['이번달_결제금액'] ?? 0)} accent="purple" />
-                </div>
-
-                {/* Mixpanel trend chart (dual axis: 건수 + 금액) */}
-                {mpTrendData && (
-                  <Card className="mb-4">
-                    <h3 className="text-sm font-bold text-mx-text mb-2">데일리샷 추이</h3>
-                    <div style={{ height: 220 }}>
-                      <Line data={mpTrendData} options={{
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { labels: { color: '#94A3B8', font: { size: 10 } } } },
-                        scales: {
-                          x: { ticks: { color: '#64748B', font: { size: 8 } }, grid: { color: '#1E293B' } },
-                          y: { position: 'left', ticks: { color: '#60A5FA', font: { size: 9 } }, grid: { color: '#1E293B' }, title: { display: true, text: '건수', color: '#60A5FA' } },
-                          y1: { position: 'right', ticks: { color: '#A78BFA', font: { size: 9 } }, grid: { drawOnChartArea: false }, title: { display: true, text: '금액(만)', color: '#A78BFA' } },
-                        },
-                      } as never} />
-                    </div>
-                  </Card>
-                )}
-
-                {/* Mixpanel breakdowns */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <MpItemTable title="어제 품목별 금액" items={mpData['어제_품목별_금액']} format="krw" />
-                  <MpItemTable title="어제 품목별 판매량" items={mpData['어제_품목별_판매량']} />
-                  <MpItemTable title="이번달 품목별 금액" items={mpData['이번달_품목별_금액']} format="krw" />
-                  <MpItemTable title="이번달 품목별 판매량" items={mpData['이번달_품목별_판매량']} />
-                  <MpItemTable title="어제 주종별 판매량" items={mpData['어제_주종별_판매량']} />
-                  <MpItemTable title="이번달 주종별 판매량" items={mpData['이번달_주종별_판매량']} />
-                  <MpItemTable title="요일별 판매량" items={mpData['요일별_판매량']} />
-                  <MpItemTable title="재입고 알림 (3개월)" items={mpData['재입고_3개월']} highlight />
-                </div>
-              </>
-            ) : mpLoading ? (
-              <p className="text-mx-text-secondary text-sm py-4 text-center">Mixpanel 데이터 로딩 중…</p>
-            ) : (
-              <p className="text-mx-text-secondary text-sm py-4 text-center">Mixpanel 데이터 없음</p>
-            )}
-          </div>
+          {/* ═══════════ Mixpanel Section (GAS-identical) ═══════════ */}
+          <MixpanelSection
+            mpData={mpData} mpLoading={mpLoading} mpCachedAt={mpCachedAt}
+            mpTrendData={mpTrendData} loadMixpanel={loadMixpanel}
+          />
 
           {/* Market breakdown table */}
           <Card>
@@ -589,31 +534,232 @@ export default function DashboardPage() {
   );
 }
 
-/* ─── Mixpanel Item Table sub-component ─── */
-function MpItemTable({ title, items, format, highlight }: {
-  title: string;
-  items: MixpanelItem[] | null;
-  format?: 'krw';
-  highlight?: boolean;
+/* ═══════════════════════════════════════════════════
+   Mixpanel Section — GAS-identical layout
+   ═══════════════════════════════════════════════════ */
+
+const CATEGORY_COLORS: Record<string, string> = {
+  '사케': '#A78BFA', '맥주': '#10B981', '위스키': '#F59E0B',
+  '리큐르': '#F472B6', '와인': '#EF4444', '소주': '#3B82F6',
+  '기타': '#64748B',
+};
+const DAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
+
+function fmtMan(v: number): string {
+  if (!v) return '0';
+  return `${Math.round(v / 10000).toLocaleString()}만원`;
+}
+
+function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpanel }: {
+  mpData: MixpanelData | null;
+  mpLoading: boolean;
+  mpCachedAt: string;
+  mpTrendData: { labels: string[]; datasets: unknown[] } | null;
+  loadMixpanel: (refresh?: boolean) => void;
 }) {
-  if (!items || items.length === 0) return null;
+  const [mpTab, setMpTab] = useState<'어제' | '이번달'>('어제');
+
+  // Compute trend summary stats
+  const trendSummary = useMemo(() => {
+    if (!mpData) return null;
+    const counts = mpData['추이_건수'] as MixpanelTs[] | null;
+    const amounts = mpData['추이_금액'] as MixpanelTs[] | null;
+    if (!counts?.length || !amounts?.length) return null;
+    const lastCount = counts[counts.length - 1]?.value ?? 0;
+    const avgCount = Math.round(counts.reduce((s, c) => s + c.value, 0) / counts.length);
+    const lastAmount = amounts[amounts.length - 1]?.value ?? 0;
+    const totalAmount = amounts.reduce((s, a) => s + a.value, 0);
+    return { lastCount, avgCount, lastAmount, totalAmount };
+  }, [mpData]);
+
+  // Items for 품목별 tab
+  const itemAmounts = mpData?.[mpTab === '어제' ? '어제_품목별_금액' : '이번달_품목별_금액'] as MixpanelItem[] | null;
+  const itemQtys = mpData?.[mpTab === '어제' ? '어제_품목별_판매량' : '이번달_품목별_판매량'] as MixpanelItem[] | null;
+  const totalItemAmount = itemAmounts?.reduce((s, i) => s + i.value, 0) ?? 0;
+  const totalItemQty = itemQtys?.reduce((s, i) => s + i.value, 0) ?? 0;
+
+  // 주종비중
+  const categories = mpData?.[mpTab === '어제' ? '어제_주종별_판매량' : '이번달_주종별_판매량'] as MixpanelItem[] | null;
+  const catTotal = categories?.reduce((s, c) => s + c.value, 0) ?? 1;
+
+  // 요일별
+  const weekday = mpData?.['요일별_판매량'] as MixpanelItem[] | null;
+  const weekdayMax = weekday ? Math.max(...weekday.map(w => w.value), 1) : 1;
+
+  // 재입고
+  const restock = mpData?.['재입고_3개월'] as MixpanelItem[] | null;
+  const restockTotal = restock?.reduce((s, r) => s + r.value, 0) ?? 0;
+
   return (
-    <Card>
-      <h4 className="text-xs font-bold text-mx-text mb-2">{title}</h4>
-      <div className="overflow-x-auto max-h-[200px]">
-        <table className="w-full text-xs">
-          <tbody>
-            {items.slice(0, 15).map((item, i) => (
-              <tr key={item.name} className={`border-b border-mx-border/30 ${highlight && i < 3 ? 'text-amber-400' : ''}`}>
-                <td className="py-1 pr-2 truncate max-w-[200px]">{item.name}</td>
-                <td className="py-1 text-right font-mono">
-                  {format === 'krw' ? formatKRW(item.value) : formatNumber(item.value)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="border-t border-mx-border pt-4 mt-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-bold text-mx-text">데일리샷 Mixpanel</h2>
+          {mpCachedAt && (
+            <span className="text-[10px] text-mx-text-secondary">
+              {mpCachedAt.substring(11, 16)} 기준
+            </span>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => loadMixpanel(true)} disabled={mpLoading}>
+          {mpLoading ? '로딩...' : '갱신'}
+        </Button>
       </div>
-    </Card>
+
+      {!mpData ? (
+        <p className="text-mx-text-secondary text-sm py-4 text-center">
+          {mpLoading ? 'Mixpanel 데이터 로딩 중…' : 'Mixpanel 데이터 없음'}
+        </p>
+      ) : (
+        <>
+          {/* KPI row — formatted like GAS: "70건", "701만원" */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <KpiCard label="어제 결제건수" value={`${formatNumber(mpData['어제_결제건수'] ?? 0)}건`} accent="blue" />
+            <KpiCard label="어제 결제금액" value={fmtMan(Number(mpData['어제_결제금액'] ?? 0))} accent="blue" />
+            <KpiCard label="이번달 결제건수" value={`${formatNumber(mpData['이번달_결제건수'] ?? 0)}건`} accent="purple" />
+            <KpiCard label="이번달 결제금액" value={fmtMan(Number(mpData['이번달_결제금액'] ?? 0))} accent="purple" />
+          </div>
+
+          {/* Trend chart with summary stats */}
+          {mpTrendData && (
+            <Card className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-mx-text">
+                  결제 추이 (최근 30일) — <span className="text-blue-400">건수</span> / <span className="text-purple-400">금액</span>
+                </h3>
+                {trendSummary && (
+                  <div className="flex gap-4 text-[10px]">
+                    <span className="text-blue-400">오늘 {trendSummary.lastCount}건</span>
+                    <span className="text-mx-text-secondary">일평균 {trendSummary.avgCount}건</span>
+                    <span className="text-purple-400">오늘 {fmtMan(trendSummary.lastAmount)}</span>
+                    <span className="text-mx-text-secondary">30일 {fmtMan(trendSummary.totalAmount)}</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ height: 220 }}>
+                <Line data={mpTrendData as never} options={{
+                  responsive: true, maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    x: { ticks: { color: '#64748B', font: { size: 8 } }, grid: { color: '#1E293B' } },
+                    y: { position: 'left', ticks: { color: '#60A5FA', font: { size: 9 } }, grid: { color: '#1E293B' } },
+                    y1: { position: 'right', ticks: { color: '#A78BFA', font: { size: 9 }, callback: (v: string | number) => `${Number(v)}만` }, grid: { drawOnChartArea: false } },
+                  },
+                } as never} />
+              </div>
+            </Card>
+          )}
+
+          {/* 3-column: 품목별 | 주종비중 | 요일별 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            {/* 품목별 (with tabs) */}
+            <Card>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="text-xs font-bold text-mx-text">품목별</h4>
+                <button onClick={() => setMpTab('어제')}
+                  className={`text-[10px] px-2 py-0.5 rounded ${mpTab === '어제' ? 'bg-blue-600 text-white' : 'text-mx-text-secondary'}`}>어제</button>
+                <button onClick={() => setMpTab('이번달')}
+                  className={`text-[10px] px-2 py-0.5 rounded ${mpTab === '이번달' ? 'bg-blue-600 text-white' : 'text-mx-text-secondary'}`}>이번달</button>
+                <span className="ml-auto text-[10px] text-mx-text-secondary">
+                  {fmtMan(totalItemAmount)} / {totalItemQty}개
+                </span>
+              </div>
+              <div className="overflow-y-auto max-h-[220px]">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-mx-text-secondary border-b border-mx-border/50">
+                      <th className="text-left py-1 font-normal">상품명</th>
+                      <th className="text-right py-1 font-normal">금액</th>
+                      <th className="text-right py-1 font-normal">수량</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(itemAmounts || []).slice(0, 15).map(item => {
+                      const qty = itemQtys?.find(q => q.name === item.name)?.value ?? 0;
+                      return (
+                        <tr key={item.name} className="border-b border-mx-border/20">
+                          <td className="py-1 pr-1 truncate max-w-[140px]">{item.name}</td>
+                          <td className="py-1 text-right font-mono text-cyan-400">{Math.round(item.value / 10000).toLocaleString()}만</td>
+                          <td className="py-1 text-right font-mono">{qty}개</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* 주종비중 */}
+            <Card>
+              <h4 className="text-xs font-bold text-mx-text mb-2">주종비중 ({mpTab === '어제' ? '어제' : '이번달'})</h4>
+              <div className="space-y-2">
+                {(categories || []).map(cat => {
+                  const pct = Math.round((cat.value / catTotal) * 100);
+                  const color = CATEGORY_COLORS[cat.name] || '#64748B';
+                  return (
+                    <div key={cat.name}>
+                      <div className="flex items-center justify-between text-[11px] mb-0.5">
+                        <span style={{ color }}>{cat.name}</span>
+                        <span className="text-mx-text-secondary">{pct}% ({cat.value})</span>
+                      </div>
+                      <div className="h-1.5 rounded bg-mx-border/30">
+                        <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* 요일별 판매량 */}
+            <Card>
+              <h4 className="text-xs font-bold text-mx-text mb-2">요일별 판매량</h4>
+              <div className="space-y-1.5">
+                {(weekday || []).map((w, i) => {
+                  const pct = (w.value / weekdayMax) * 100;
+                  const label = DAY_NAMES[i] || w.name;
+                  return (
+                    <div key={w.name} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-4 text-mx-text-secondary">{label}</span>
+                      <div className="flex-1 h-3 rounded bg-mx-border/20 relative">
+                        <div className="h-full rounded bg-blue-500/60" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="w-8 text-right font-mono">{w.value}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+
+          {/* 재입고 알림 */}
+          {restock && restock.length > 0 && (
+            <Card>
+              <h4 className="text-xs font-bold text-mx-text mb-2">
+                <span className="text-amber-400">재입고 알림 요청 (3개월)</span>
+                <span className="text-mx-text-secondary ml-2 font-normal">총 {restockTotal}건</span>
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {restock.slice(0, 12).map(item => {
+                  const pct = Math.min((item.value / (restock[0]?.value || 1)) * 100, 100);
+                  return (
+                    <div key={item.name} className="bg-mx-bg/50 rounded p-2">
+                      <div className="text-[11px] truncate mb-1">{item.name}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded bg-mx-border/30">
+                          <div className="h-full rounded bg-amber-500" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[11px] font-bold text-amber-400">{item.value}건</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
   );
 }

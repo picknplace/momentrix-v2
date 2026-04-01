@@ -28,47 +28,39 @@ const MIXPANEL_CARDS: Record<number, { name: string; dim: string }> = {
   66838188: { name: '추이_금액', dim: 'timeseries' },
 };
 
+// GAS-identical parsing: response is { results: { series: {...}, date_range: {...} } }
 function parseCardResult(raw: unknown, dim: string): unknown {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Record<string, unknown>;
+  const wrapper = raw as Record<string, unknown>;
+  const results = wrapper.results as Record<string, unknown> | undefined;
+  if (!results) return null;
+  const series = results.series as Record<string, Record<string, number>> | undefined;
+  if (!series) return null;
 
   if (dim === 'none') {
-    // Single value — first series, last value
-    const series = r.series as Record<string, Record<string, number>> | undefined;
-    if (series) {
-      const firstKey = Object.keys(series)[0];
-      if (firstKey) {
-        const vals = series[firstKey];
-        const dates = Object.keys(vals).sort();
-        return dates.length > 0 ? vals[dates[dates.length - 1]] : 0;
-      }
-    }
-    return 0;
-  }
-
-  if (dim === 'items') {
-    // Breakdown by item
-    const series = r.series as Record<string, Record<string, number>> | undefined;
-    if (!series) return [];
-    return Object.entries(series).map(([name, vals]) => {
-      const dates = Object.keys(vals).sort();
-      const total = dates.reduce((s, d) => s + (vals[d] || 0), 0);
-      return { name, value: total };
-    }).sort((a, b) => b.value - a.value);
+    // Scalar — series[key]['all']
+    const firstKey = Object.keys(series)[0];
+    if (!firstKey) return 0;
+    return series[firstKey]['all'] ?? 0;
   }
 
   if (dim === 'timeseries') {
-    // Time series data
-    const series = r.series as Record<string, Record<string, number>> | undefined;
-    if (!series) return [];
+    // Time series — series[key] without 'all', sorted by date
     const firstKey = Object.keys(series)[0];
     if (!firstKey) return [];
     const vals = series[firstKey];
-    return Object.entries(vals).sort(([a], [b]) => a.localeCompare(b))
+    return Object.entries(vals)
+      .filter(([k]) => k !== 'all')
+      .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, value]) => ({ date, value }));
   }
 
-  return raw;
+  // dim === 'items' (default) — all keys except '$overall', sorted desc, top 15
+  return Object.entries(series)
+    .filter(([name]) => name !== '$overall')
+    .map(([name, vals]) => ({ name, value: vals['all'] ?? 0 }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 15);
 }
 
 async function fetchMixpanelData(): Promise<Record<string, unknown>> {
@@ -79,13 +71,15 @@ async function fetchMixpanelData(): Promise<Record<string, unknown>> {
       const res = await fetch('https://mixpanel.com/api/app/public/dashboard-cards', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'text/plain;charset=UTF-8',
           'Origin': 'https://mixpanel.com',
           'Referer': MIXPANEL_BOARD_URL,
         },
         body: JSON.stringify({
-          board_uuid: MIXPANEL_BOARD_UUID,
+          uuid: MIXPANEL_BOARD_UUID,
           bookmark_id: Number(cardId),
+          endpoint: 'insights',
+          query_origin: 'dashboard_public',
         }),
       });
 

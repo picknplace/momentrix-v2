@@ -441,7 +441,7 @@ export default function DashboardPage() {
           {/* ═══════════ Mixpanel Section ═══════════ */}
           <div className="border-t border-mx-border pt-4 mt-4">
             <div className="flex items-center gap-3 mb-3">
-              <h2 className="text-base font-bold text-mx-text">자사몰 (Mixpanel)</h2>
+              <h2 className="text-base font-bold text-mx-text">데일리샷 (Mixpanel)</h2>
               {mpCachedAt && (
                 <span className="text-[10px] text-mx-text-secondary">
                   캐시: {mpCachedAt.substring(0, 16).replace('T', ' ')}
@@ -465,7 +465,7 @@ export default function DashboardPage() {
                 {/* Mixpanel trend chart (dual axis: 건수 + 금액) */}
                 {mpTrendData && (
                   <Card className="mb-4">
-                    <h3 className="text-sm font-bold text-mx-text mb-2">자사몰 추이</h3>
+                    <h3 className="text-sm font-bold text-mx-text mb-2">데일리샷 추이</h3>
                     <div style={{ height: 220 }}>
                       <Line data={mpTrendData} options={{
                         responsive: true, maintainAspectRatio: false,

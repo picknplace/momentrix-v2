@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (dateTo)   { where += ' AND sales_date <= ?'; params.push(dateTo); }
 
   // Run all queries in parallel
-  const [kpi, daily, dailyByMarket, byMarket, topSkus, unshipped, cancelStats, shippedDaily] = await Promise.all([
+  const [kpi, daily, dailyByMarket, byMarket, topSkus, unshipped, cancelStats, shippedDaily, skuLead, dailyShipByMarket] = await Promise.all([
     // KPI totals
     queryOne<{
       total_orders: number; total_qty: number;
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         (SELECT COUNT(*) FROM order_items WHERE 1=1 ${dateFrom ? "AND sales_date >= '" + dateFrom + "'" : ''} ${dateTo ? "AND sales_date <= '" + dateTo + "'" : ''}) as total_for_rate`,
     ),
 
-    // Daily shipment volume
+    // Daily shipment volume (total)
     queryAll<{ ship_date: string; shipped_qty: number; shipped_count: number }>(
       `SELECT ship_date, SUM(qty) as shipped_qty, COUNT(*) as shipped_count
        FROM order_items
@@ -108,6 +108,31 @@ export async function GET(req: NextRequest) {
        ${dateFrom ? "AND ship_date >= '" + dateFrom + "'" : ''}
        ${dateTo ? "AND ship_date <= '" + dateTo + "'" : ''}
        GROUP BY ship_date ORDER BY ship_date`,
+    ),
+
+    // SKU lead time (avg days between sales_date and ship_date)
+    queryAll<{ master_sku: string; product_name_raw: string; avg_days: number; order_count: number }>(
+      `SELECT master_sku, MIN(product_name_raw) as product_name_raw,
+              ROUND(AVG(JULIANDAY(ship_date) - JULIANDAY(sales_date)), 1) as avg_days,
+              COUNT(*) as order_count
+       FROM order_items
+       WHERE order_status = 'normal' AND ship_date IS NOT NULL AND ship_date != ''
+         AND sales_date IS NOT NULL AND sales_date != ''
+       ${dateFrom ? "AND sales_date >= '" + dateFrom + "'" : ''}
+       ${dateTo ? "AND sales_date <= '" + dateTo + "'" : ''}
+       GROUP BY master_sku
+       HAVING COUNT(*) >= 3
+       ORDER BY avg_days DESC LIMIT 15`,
+    ),
+
+    // Daily shipment by market (for stacked bar)
+    queryAll<{ ship_date: string; market_id: string; shipped_qty: number }>(
+      `SELECT ship_date, market_id, SUM(qty) as shipped_qty
+       FROM order_items
+       WHERE order_status = 'normal' AND ship_date IS NOT NULL AND ship_date != ''
+       ${dateFrom ? "AND ship_date >= '" + dateFrom + "'" : ''}
+       ${dateTo ? "AND ship_date <= '" + dateTo + "'" : ''}
+       GROUP BY ship_date, market_id ORDER BY ship_date`,
     ),
   ]);
 
@@ -148,5 +173,7 @@ export async function GET(req: NextRequest) {
     byMarket,
     topSkus,
     shippedDaily,
+    skuLead,
+    dailyShipByMarket,
   });
 }

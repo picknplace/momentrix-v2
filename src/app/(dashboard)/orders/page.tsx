@@ -11,6 +11,9 @@ import {
   PointElement, ArcElement, Tooltip, Legend, Filler,
 } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import dynamic from 'next/dynamic';
+
+const ShipUpload = dynamic(() => import('./ship-upload'), { ssr: false });
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -95,6 +98,9 @@ export default function OrdersPage() {
 
   // Tracking inputs
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
+
+  // Ship upload modal
+  const [showShipUpload, setShowShipUpload] = useState(false);
 
   // Cancel modal
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
@@ -235,6 +241,7 @@ export default function OrdersPage() {
             </button>
           </div>
           <Button variant="outline" size="sm" onClick={loadList}>갱신</Button>
+          <Button variant="primary" size="sm" onClick={() => setShowShipUpload(true)}>운송장 업로드</Button>
         </div>
       </div>
 
@@ -555,6 +562,11 @@ export default function OrdersPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* ── Ship Upload Modal ── */}
+      {showShipUpload && (
+        <ShipUpload onClose={() => setShowShipUpload(false)} onDone={() => { setShowShipUpload(false); loadList(); }} />
       )}
 
       {/* ── Cancel Modal ── */}

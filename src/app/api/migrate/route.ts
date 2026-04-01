@@ -1,7 +1,7 @@
 /**
  * POST /api/migrate — Bulk data import from GAS
  * Protected by CRON_SECRET header
- * Accepts { table, rows } and inserts into D1
+ * Accepts { table, rows, clear } and inserts into D1
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestContext } from '@cloudflare/next-on-pages';
@@ -74,6 +74,46 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
 };
 
+// Primary key columns only — rows missing PK are truly empty rows to skip
+const PK_COLUMNS: Record<string, string[]> = {
+  import_log: ['import_id'],
+  order_items: ['order_id'],
+  order_events: ['event_id'],
+  sku_map: ['dailyshot_product_key'],
+  sku_master: ['master_sku'],
+  cost_master: ['master_sku'],
+  users: ['user_id'],
+  audit_log: ['log_id'],
+  daily_summary: ['sales_date'],
+  market_summary: ['market_id'],
+  sku_summary: ['master_sku'],
+  inventory: ['master_sku'],
+  suppliers: ['supplier_id'],
+  supplier_products: ['supplier_id'],
+  purchase_orders: ['po_id'],
+  po_items: ['po_id'],
+  price_history: ['supplier_id'],
+};
+
+// NOT NULL columns and their default values (when GAS sends empty/null)
+const NOT_NULL_DEFAULTS: Record<string, Record<string, unknown>> = {
+  import_log: { market_id: '기타', file_name: '', sales_date: '1970-01-01', upload_status: 'success' },
+  order_items: { import_id: 'UNKNOWN', market_id: '기타', sales_date: '1970-01-01', order_id: '' },
+  order_events: { event_type: 'unknown', market_id: '', order_id: '' },
+  sku_master: { product_name: '(미등록)' },
+  users: { password_hash: '', email: '', name: '', role: 'operator', status: 'active' },
+  audit_log: { user_id: 'system', action_type: 'unknown' },
+  suppliers: { name: '' },
+};
+
+// Child tables to clear when clearing a parent table (FK dependencies)
+const CASCADE_CLEAR: Record<string, string[]> = {
+  import_log: ['order_items'],
+  users: ['auth_otp'],
+  suppliers: ['supplier_products'],
+  purchase_orders: ['po_items'],
+};
+
 export async function POST(req: NextRequest) {
   const { env } = getRequestContext();
   const secret = req.headers.get('x-cron-secret') || req.headers.get('authorization')?.replace('Bearer ', '');
@@ -97,57 +137,42 @@ export async function POST(req: NextRequest) {
   const db = (env as Record<string, unknown>).DB as D1Database;
 
   try {
-    // Disable foreign key checks during migration
-    await db.prepare('PRAGMA foreign_keys = OFF').run();
-
-    // Optionally clear existing data
+    // Clear: delete child tables first (FK cascade), then parent
     if (clear) {
+      const children = CASCADE_CLEAR[table] || [];
+      for (const child of children) {
+        await db.prepare(`DELETE FROM ${child}`).run();
+      }
       await db.prepare(`DELETE FROM ${table}`).run();
     }
 
-    // Insert in batches of 50 (D1 limit-friendly)
     const BATCH_SIZE = 50;
     let inserted = 0;
-
-    // Required (NOT NULL) key columns per table — skip rows missing these
-    const requiredKeys: Record<string, string[]> = {
-      import_log: ['import_id', 'market_id'],
-      order_items: ['import_id', 'market_id', 'order_id'],
-      order_events: ['event_id', 'event_type'],
-      sku_map: ['dailyshot_product_key'],
-      sku_master: ['master_sku', 'product_name'],
-      cost_master: ['master_sku'],
-      users: ['user_id'],
-      audit_log: ['log_id', 'user_id'],
-      daily_summary: ['sales_date'],
-      market_summary: ['market_id'],
-      sku_summary: ['master_sku'],
-      inventory: ['master_sku'],
-      suppliers: ['supplier_id'],
-      supplier_products: ['supplier_id'],
-      purchase_orders: ['po_id'],
-      po_items: ['po_id'],
-      price_history: ['supplier_id'],
-    };
-    const reqCols = requiredKeys[table] || [];
+    const pkCols = PK_COLUMNS[table] || [];
+    const defaults = NOT_NULL_DEFAULTS[table] || {};
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
       const stmts: D1PreparedStatement[] = [];
 
       for (const row of batch) {
-        // Skip rows where required columns are empty/null
-        const missing = reqCols.some(c => {
+        // Skip rows where PK columns are empty (truly empty rows)
+        const missingPK = pkCols.some(c => {
           const v = row[c];
           return v === undefined || v === null || v === '';
         });
-        if (missing) continue;
+        if (missingPK) continue;
 
         const vals = columns.map(col => {
           const v = row[col];
-          if (v === undefined || v === null || v === '') return null;
+          // If value is empty/null, check for NOT NULL default
+          if (v === undefined || v === null || v === '') {
+            if (col in defaults) return defaults[col];
+            return null;
+          }
           return v;
         });
+
         const placeholders = columns.map(() => '?').join(',');
         stmts.push(
           db.prepare(
@@ -162,13 +187,8 @@ export async function POST(req: NextRequest) {
       inserted += stmts.length;
     }
 
-    // Re-enable foreign key checks
-    await db.prepare('PRAGMA foreign_keys = ON').run();
-
     return NextResponse.json({ ok: true, table, inserted });
   } catch (err) {
-    // Re-enable foreign key checks even on error
-    try { await db.prepare('PRAGMA foreign_keys = ON').run(); } catch { /* ignore */ }
     return NextResponse.json({
       ok: false,
       message: err instanceof Error ? err.message : String(err),

@@ -572,23 +572,26 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
     return { lastCount, avgCount, lastAmount, totalAmount };
   }, [mpData]);
 
+  // Safe array getter
+  const asItems = (v: unknown): MixpanelItem[] => Array.isArray(v) ? v : [];
+
   // Items for 품목별 tab
-  const itemAmounts = mpData?.[mpTab === '어제' ? '어제_품목별_금액' : '이번달_품목별_금액'] as MixpanelItem[] | null;
-  const itemQtys = mpData?.[mpTab === '어제' ? '어제_품목별_판매량' : '이번달_품목별_판매량'] as MixpanelItem[] | null;
-  const totalItemAmount = itemAmounts?.reduce((s, i) => s + i.value, 0) ?? 0;
-  const totalItemQty = itemQtys?.reduce((s, i) => s + i.value, 0) ?? 0;
+  const itemAmounts = asItems(mpData?.[mpTab === '어제' ? '어제_품목별_금액' : '이번달_품목별_금액']);
+  const itemQtys = asItems(mpData?.[mpTab === '어제' ? '어제_품목별_판매량' : '이번달_품목별_판매량']);
+  const totalItemAmount = itemAmounts.reduce((s, i) => s + (i.value || 0), 0);
+  const totalItemQty = itemQtys.reduce((s, i) => s + (i.value || 0), 0);
 
   // 주종비중
-  const categories = mpData?.[mpTab === '어제' ? '어제_주종별_판매량' : '이번달_주종별_판매량'] as MixpanelItem[] | null;
-  const catTotal = categories?.reduce((s, c) => s + c.value, 0) ?? 1;
+  const categories = asItems(mpData?.[mpTab === '어제' ? '어제_주종별_판매량' : '이번달_주종별_판매량']);
+  const catTotal = categories.reduce((s, c) => s + (c.value || 0), 0) || 1;
 
   // 요일별
-  const weekday = mpData?.['요일별_판매량'] as MixpanelItem[] | null;
-  const weekdayMax = weekday ? Math.max(...weekday.map(w => w.value), 1) : 1;
+  const weekday = asItems(mpData?.['요일별_판매량']);
+  const weekdayMax = weekday.length > 0 ? Math.max(...weekday.map(w => w.value || 0), 1) : 1;
 
   // 재입고
-  const restock = mpData?.['재입고_3개월'] as MixpanelItem[] | null;
-  const restockTotal = restock?.reduce((s, r) => s + r.value, 0) ?? 0;
+  const restock = asItems(mpData?.['재입고_3개월']);
+  const restockTotal = restock.reduce((s, r) => s + (r.value || 0), 0);
 
   return (
     <div className="border-t border-mx-border pt-4 mt-4">
@@ -675,7 +678,7 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
                     </tr>
                   </thead>
                   <tbody>
-                    {(itemAmounts || []).slice(0, 15).map(item => {
+                    {itemAmounts.slice(0, 15).map(item => {
                       const qty = itemQtys?.find(q => q.name === item.name)?.value ?? 0;
                       return (
                         <tr key={item.name} className="border-b border-mx-border/20">
@@ -694,7 +697,7 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
             <Card>
               <h4 className="text-xs font-bold text-mx-text mb-2">주종비중 ({mpTab === '어제' ? '어제' : '이번달'})</h4>
               <div className="space-y-2">
-                {(categories || []).map(cat => {
+                {categories.map(cat => {
                   const pct = Math.round((cat.value / catTotal) * 100);
                   const color = CATEGORY_COLORS[cat.name] || '#64748B';
                   return (
@@ -716,7 +719,7 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
             <Card>
               <h4 className="text-xs font-bold text-mx-text mb-2">요일별 판매량</h4>
               <div className="space-y-1.5">
-                {(weekday || []).map((w, i) => {
+                {weekday.map((w, i) => {
                   const pct = (w.value / weekdayMax) * 100;
                   const label = DAY_NAMES[i] || w.name;
                   return (
@@ -734,7 +737,7 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
           </div>
 
           {/* 재입고 알림 */}
-          {restock && restock.length > 0 && (
+          {restock.length > 0 && (
             <Card>
               <h4 className="text-xs font-bold text-mx-text mb-2">
                 <span className="text-amber-400">재입고 알림 요청 (3개월)</span>

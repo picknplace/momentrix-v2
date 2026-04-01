@@ -55,9 +55,9 @@ function parseCardResult(raw: unknown, dim: string): unknown {
       .map(([date, value]) => ({ date, value }));
   }
 
-  // dim === 'items' (default) — all keys except '$overall', sorted desc, top 15
+  // dim === 'items' (default) — all keys except '$overall'/'Formula', sorted desc, top 15
   return Object.entries(series)
-    .filter(([name]) => name !== '$overall')
+    .filter(([name]) => name !== '$overall' && name !== 'Formula')
     .map(([name, vals]) => ({ name, value: vals['all'] ?? 0 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 15);
@@ -133,18 +133,21 @@ export async function GET(req: NextRequest) {
   const data = await fetchMixpanelData();
   const now = new Date().toISOString();
 
-  // Save to cache (two keys: data + timestamp)
-  try {
-    await execute(
-      `INSERT OR REPLACE INTO config_kv (key, value) VALUES ('mixpanel_cache', ?)`,
-      JSON.stringify(data),
-    );
-    await execute(
-      `INSERT OR REPLACE INTO config_kv (key, value) VALUES ('mixpanel_cache_at', ?)`,
-      now,
-    );
-  } catch {
-    // Cache write failure is non-fatal
+  // Only cache if we got actual data (not all null)
+  const hasData = Object.values(data).some(v => v !== null);
+  if (hasData) {
+    try {
+      await execute(
+        `INSERT OR REPLACE INTO config_kv (key, value) VALUES ('mixpanel_cache', ?)`,
+        JSON.stringify(data),
+      );
+      await execute(
+        `INSERT OR REPLACE INTO config_kv (key, value) VALUES ('mixpanel_cache_at', ?)`,
+        now,
+      );
+    } catch {
+      // Cache write failure is non-fatal
+    }
   }
 
   return NextResponse.json({ ok: true, data, cached: false, cachedAt: now });

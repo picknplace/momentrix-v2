@@ -594,11 +594,11 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
   const restockTotal = restock.reduce((s, r) => s + (r.value || 0), 0);
 
   return (
-    <div className="border-t border-mx-border pt-4 mt-4">
+    <div className="border border-amber-500/40 rounded-lg p-4 mt-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-base font-bold text-mx-text">데일리샷 Mixpanel</h2>
+          <h2 className="text-base font-bold text-mx-text">📊 데일리샷 Mixpanel</h2>
           {mpCachedAt && (
             <span className="text-[10px] text-mx-text-secondary">
               {mpCachedAt.substring(11, 16)} 기준

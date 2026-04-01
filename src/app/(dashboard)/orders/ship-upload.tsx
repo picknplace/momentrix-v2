@@ -76,6 +76,11 @@ export default function ShipUpload({ onClose, onDone }: ShipUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
 
+  // Mail
+  const [khEmail, setKhEmail] = useState('');
+  const [khEmailCc, setKhEmailCc] = useState('');
+  const [sending, setSending] = useState(false);
+
   /* ── File load ── */
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -235,6 +240,58 @@ export default function ShipUpload({ onClose, onDone }: ShipUploadProps) {
     toast(`드몽 ${dmItems.length}건 엑셀 다운로드`, 'success');
   };
 
+  /* ── Gmail 발송 ── */
+  const sendKhMail = async () => {
+    if (!khEmail.trim()) { toast('수신 이메일을 입력하세요.', 'warn'); return; }
+    if (!khItems.length) { toast('KH 운송장 데이터가 없습니다.', 'warn'); return; }
+
+    setSending(true);
+    setStatus('출고리스트 생성 + Gmail 발송 중…');
+
+    // Build KH Excel as base64
+    const hdr = ['공급사명', '주문일자', '주문 번호', '상품주문번호', '모델명', '상품 코드', '상품명',
+      '상품수량', '매입가', '수취인 이름', '통관고유부호', '수취인 전화번호', '수취인 핸드폰 번호',
+      '수취인 우편번호', '수취인 전체주소', '주문시 남기는 글', '송장번호', '비고'];
+    const rows: (string | number)[][] = [hdr];
+    khItems.forEach(r => {
+      rows.push(['드렁큰몽키', '', '', r.order_id, '', '', '', '', '', '', '', '', '', '', '', '', r.tracking_no, '정상']);
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '금일 출고건');
+    const xlsxBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+
+    const shipDate = new Date().toISOString().substring(0, 10);
+    const fn = `KH_DMONKEY_shipment_${today8()}.xlsx`;
+
+    const htmlBody = `
+      <div style="font-family:sans-serif;">
+        <p>안녕하세요, TERA CORPORATION입니다.</p>
+        <p><strong>${shipDate}</strong> 출고리스트를 보내드립니다.</p>
+        <p>총 <strong>${khItems.length}건</strong></p>
+        <br/>
+        <p>감사합니다.</p>
+      </div>
+    `;
+
+    const res = await api<{ ok: boolean; message: string }>('email/send', {
+      to: khEmail.trim(),
+      cc: khEmailCc.trim() || undefined,
+      subject: `[${shipDate}] 키햐-드몽 송장번호`,
+      htmlBody,
+      attachment: { base64: xlsxBase64, filename: fn, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    });
+
+    setSending(false);
+    if (res?.ok) {
+      setStatus(`Gmail 발송 완료 → ${khEmail.trim()} (${khItems.length}건)`);
+      toast('Gmail 발송 완료', 'success');
+    } else {
+      setStatus('발송 실패: ' + (res?.message || ''));
+      toast(res?.message || '발송 실패', 'error');
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 pt-10 overflow-y-auto">
       <div className="bg-mx-card border border-mx-border rounded-lg w-[700px] max-h-[85vh] overflow-y-auto">
@@ -334,8 +391,20 @@ export default function ShipUpload({ onClose, onDone }: ShipUploadProps) {
                   <h3 className="text-xs font-bold text-green-400">키하 {khItems.length}건</h3>
                   <div className="flex gap-1">
                     <Button variant="outline" size="sm" onClick={dlKhXlsx} disabled={!khItems.length}>출고리스트 다운로드</Button>
+                    <Button variant="primary" size="sm" onClick={sendKhMail} disabled={!khItems.length || sending}>
+                      {sending ? '발송 중…' : 'Gmail 발송'}
+                    </Button>
                   </div>
                 </div>
+                {/* Mail config */}
+                {khItems.length > 0 && (
+                  <div className="flex gap-2 mb-2">
+                    <input value={khEmail} onChange={e => setKhEmail(e.target.value)} placeholder="수신 이메일"
+                      className="flex-1 bg-mx-bg border border-mx-border rounded px-2 py-1 text-xs text-mx-text" />
+                    <input value={khEmailCc} onChange={e => setKhEmailCc(e.target.value)} placeholder="CC (선택)"
+                      className="flex-1 bg-mx-bg border border-mx-border rounded px-2 py-1 text-xs text-mx-text" />
+                  </div>
+                )}
                 {khItems.length > 0 && (
                   <div className="overflow-x-auto max-h-[120px]">
                     <table className="w-full text-[10px]">

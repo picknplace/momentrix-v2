@@ -32,6 +32,7 @@ interface Order {
   tracking_no: string;
   ship_date: string;
   recipient_name: string;
+  customs_id: string;
   address: string;
   phone: string;
 }
@@ -41,8 +42,8 @@ interface Analytics {
   byMarket: { market_id: string; orders: number; qty: number; settlement: number; cancelled: number }[];
   cancelRate: { period: string; total: number; cancelled: number }[];
   shipStatus: { market_id: string; shipped: number; unshipped: number }[];
-  repeatCustomers: { key_val: string; key_type: string; order_count: number; total_qty: number; total_settlement: number; first_date: string; last_date: string; markets: string }[];
-  repeatOrders: { key_val: string; market_id: string; sales_date: string; order_id: string }[];
+  repeatCustomers: { customs_id: string; recipient_name: string; order_count: number; total_qty: number; total_settlement: number; first_date: string; last_date: string; markets: string; cancelled: number; avg_amount: number }[];
+  repeatOrders: { customs_id: string; market_id: string; sales_date: string; product_name_raw: string; qty: number; settlement_amount: number }[];
 }
 
 const MKT: Record<string, string> = { dailyshot: 'DS', kihya: 'KH', dmonkey: 'DM' };
@@ -93,7 +94,7 @@ export default function OrdersPage() {
 
   // Repeat customer lookup
   const repeatMapRef = useRef<Map<string, number>>(new Map());
-  const repeatOrdersMapRef = useRef<Map<string, { market_id: string; sales_date: string }[]>>(new Map());
+  const repeatOrdersMapRef = useRef<Map<string, { market_id: string; sales_date: string; product_name_raw: string; qty: number; settlement_amount: number }[]>>(new Map());
 
   // Shipping: tracking inputs
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
@@ -149,13 +150,14 @@ export default function OrdersPage() {
       const a = res as unknown as Analytics;
       setAnalytics(a);
       const m = new Map<string, number>();
-      a.repeatCustomers?.forEach(r => { m.set(r.key_val, r.order_count); });
+      a.repeatCustomers?.forEach(r => { m.set(r.customs_id, r.order_count); });
       repeatMapRef.current = m;
       // Build repeat orders map (platform flow per customer)
-      const om = new Map<string, { market_id: string; sales_date: string }[]>();
+      const om = new Map<string, { market_id: string; sales_date: string; product_name_raw: string; qty: number; settlement_amount: number }[]>();
       a.repeatOrders?.forEach(r => {
-        if (!om.has(r.key_val)) om.set(r.key_val, []);
-        om.get(r.key_val)!.push({ market_id: r.market_id, sales_date: r.sales_date });
+        const key = r.customs_id;
+        if (!om.has(key)) om.set(key, []);
+        om.get(key)!.push({ market_id: r.market_id, sales_date: r.sales_date, product_name_raw: r.product_name_raw, qty: r.qty, settlement_amount: r.settlement_amount });
       });
       repeatOrdersMapRef.current = om;
     }
@@ -203,7 +205,7 @@ export default function OrdersPage() {
     }
   };
 
-  const getRepeatCount = (o: Order) => repeatMapRef.current.get(o.recipient_name) || 0;
+  const getRepeatCount = (o: Order) => repeatMapRef.current.get(o.customs_id) || 0;
 
   const elapsed = (salesDate: string) => {
     const d = new Date(salesDate);
@@ -371,32 +373,29 @@ export default function OrdersPage() {
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-mx-card">
                   <tr className="border-b border-mx-border text-left text-mx-text-secondary">
-                    <th className="py-1 pr-2">고객</th>
-                    <th className="py-1 pr-2">유형</th>
-                    <th className="py-1 pr-2 text-right">회수</th>
-                    <th className="py-1 pr-2 text-right">수량</th>
-                    <th className="py-1 pr-2 text-right">정산</th>
-                    <th className="py-1 pr-2">플랫폼</th>
-                    <th className="py-1 pr-2">주문 흐름</th>
+                    <th className="py-1.5 pr-2 align-middle">통관부호</th>
+                    <th className="py-1.5 pr-2 align-middle text-right">회수</th>
+                    <th className="py-1.5 pr-2 align-middle text-right">총 수량</th>
+                    <th className="py-1.5 pr-2 align-middle text-right">총 정산</th>
+                    <th className="py-1.5 pr-2 align-middle">플랫폼</th>
+                    <th className="py-1.5 pr-2 align-middle">주문 이력</th>
                   </tr>
                 </thead>
                 <tbody>
                   {analytics.repeatCustomers.map((r, i) => {
-                    const flow = repeatOrdersMapRef.current.get(r.key_val) || [];
+                    const flow = repeatOrdersMapRef.current.get(r.customs_id) || [];
                     const marketList = r.markets?.split(',') || [];
                     const isMultiPlatform = marketList.length > 1;
                     return (
-                      <tr key={i} className={`border-b border-mx-border/50 ${isMultiPlatform ? 'bg-purple-900/10' : ''}`}>
-                        <td className="py-1 pr-2">{r.key_val}</td>
-                        <td className="py-1 pr-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${r.key_type === 'name' ? 'bg-blue-900/50 text-blue-300' : 'bg-purple-900/50 text-purple-300'}`}>
-                            {r.key_type === 'customs' ? '통관부호' : '수취인'}
-                          </span>
+                      <tr key={i} className={`border-b border-mx-border/50 align-top ${isMultiPlatform ? 'bg-purple-900/10' : ''}`}>
+                        <td className="py-1.5 pr-2 align-middle">
+                          <span className="font-mono text-[10px]">{r.customs_id}</span>
+                          {r.recipient_name && <span className="ml-1 text-mx-text-secondary text-[10px]">({r.recipient_name})</span>}
                         </td>
-                        <td className="py-1 pr-2 text-right font-bold text-amber-400">{fmtN(r.order_count)}회</td>
-                        <td className="py-1 pr-2 text-right">{fmtN(r.total_qty)}개</td>
-                        <td className="py-1 pr-2 text-right">{formatKRW(r.total_settlement)}</td>
-                        <td className="py-1 pr-2">
+                        <td className="py-1.5 pr-2 text-right font-bold text-amber-400 align-middle">{fmtN(r.order_count)}회</td>
+                        <td className="py-1.5 pr-2 text-right align-middle">{fmtN(r.total_qty)}개</td>
+                        <td className="py-1.5 pr-2 text-right align-middle">{formatKRW(r.total_settlement)}</td>
+                        <td className="py-1.5 pr-2 align-middle">
                           {marketList.map(m => (
                             <span key={m} className="mr-1 px-1 py-0.5 rounded text-[9px] font-bold" style={{
                               backgroundColor: MKT_COLORS[m]?.replace('0.8', '0.2') || 'rgba(156,163,175,0.2)',
@@ -409,19 +408,22 @@ export default function OrdersPage() {
                             <span className="px-1 py-0.5 rounded text-[9px] font-bold bg-purple-600/30 text-purple-300">이동</span>
                           )}
                         </td>
-                        <td className="py-1 pr-2 text-[10px] text-mx-text-secondary">
-                          {flow.slice(0, 8).map((f, j) => (
-                            <span key={j}>
-                              {j > 0 && <span className="text-mx-text-secondary mx-0.5">→</span>}
-                              <span className={j === 0 ? 'text-mx-text-secondary' : ''} style={{
-                                color: MKT_COLORS[f.market_id]?.replace('0.8', '1') || '#9ca3af',
-                              }}>
-                                {MKT[f.market_id] || f.market_id}
-                              </span>
-                              <span className="text-mx-text-secondary">({f.sales_date.substring(5)})</span>
-                            </span>
-                          ))}
-                          {flow.length > 8 && <span className="text-mx-text-secondary"> +{flow.length - 8}</span>}
+                        <td className="py-1.5 pr-2">
+                          <div className="space-y-0.5">
+                            {flow.map((f, j) => (
+                              <div key={j} className="flex items-center gap-1 text-[10px]">
+                                <span className="w-3 text-center text-mx-text-secondary">{j + 1}</span>
+                                <span className="px-1 py-0.5 rounded text-[9px] font-bold" style={{
+                                  backgroundColor: MKT_COLORS[f.market_id]?.replace('0.8', '0.2') || 'rgba(156,163,175,0.2)',
+                                  color: MKT_COLORS[f.market_id]?.replace('0.8', '1') || '#9ca3af',
+                                }}>{MKT[f.market_id] || f.market_id}</span>
+                                <span className="text-mx-text-secondary">{f.sales_date.substring(5, 10)}</span>
+                                <span className="text-mx-text truncate max-w-[120px]">{f.product_name_raw}</span>
+                                <span className="text-mx-text-secondary">x{f.qty}</span>
+                                <span className="text-green-400">{fmtN(f.settlement_amount)}원</span>
+                              </div>
+                            ))}
+                          </div>
                         </td>
                       </tr>
                     );

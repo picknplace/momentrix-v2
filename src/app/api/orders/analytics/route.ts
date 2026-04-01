@@ -81,12 +81,13 @@ export async function GET(req: NextRequest) {
       ORDER BY order_count DESC LIMIT 50
     `, from),
 
-    // 6. 재주문 고객 주문 흐름 (플랫폼 이동 추적)
-    queryAll<{ customs_id: string; market_id: string; sales_date: string }>(`
-      SELECT customs_id, market_id, sales_date
+    // 6. 재주문 고객 주문 흐름 (플랫폼 이동 + 상품/금액)
+    queryAll<{ customs_id: string; market_id: string; sales_date: string; product_name_raw: string; qty: number; settlement_amount: number }>(`
+      SELECT customs_id, market_id, SUBSTR(sales_date, 1, 10) as sales_date,
+             product_name_raw, qty, settlement_amount
       FROM order_items
       WHERE order_status='normal' AND customs_id IS NOT NULL AND customs_id != '' AND sales_date >= ?
-      ORDER BY customs_id, sales_date
+      ORDER BY customs_id, sales_date ASC
     `, from),
 
     // 7. 고객 성향 프로필 (통관부호 기반)

@@ -13,7 +13,6 @@ const tabs: Tab[] = [
   { href: '/upload', label: '업로드' },
   { href: '/dashboard', label: '대시보드' },
   { href: '/orders', label: '주문/출고' },
-  { href: '/shipping', label: '운송장' },
   { href: '/inventory', label: '재고' },
   { href: '/ecount', label: '이카운트' },
   { href: '/invoice-ds', label: 'DS인보이스' },

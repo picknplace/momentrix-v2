@@ -1,52 +1,77 @@
 /**
- * GET  /api/shipping — Shipping status (unshipped + shipped list)
+ * GET  /api/shipping — Shipping status list + counts
  * POST /api/shipping — Update tracking numbers
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-guard';
-import { queryAll, execute, executeBatch } from '@/lib/db';
+import { queryAll, queryOne, executeBatch } from '@/lib/db';
 import { writeAuditLog } from '@/lib/services/audit';
 import { nowKST } from '@/lib/parsers/utils';
 
 export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
-  const { user, error } = withAuth();
+  const { error } = withAuth();
   if (error) return error;
 
   const url = new URL(req.url);
-  const filter = url.searchParams.get('filter') || 'unshipped'; // 'unshipped' | 'all'
+  const shipFilter = url.searchParams.get('shipFilter') || 'all'; // all | unshipped | shipped
   const marketId = url.searchParams.get('marketId');
+  const deliveryStatus = url.searchParams.get('deliveryStatus');
+  const search = url.searchParams.get('search');
+  const page = parseInt(url.searchParams.get('page') || '1', 10);
   const limit = parseInt(url.searchParams.get('limit') || '500', 10);
+  const offset = (page - 1) * limit;
 
   let where = "WHERE order_status = 'normal'";
   const params: unknown[] = [];
 
-  if (filter === 'unshipped') {
+  if (shipFilter === 'unshipped') {
     where += " AND (tracking_no IS NULL OR tracking_no = '')";
+  } else if (shipFilter === 'shipped') {
+    where += " AND tracking_no IS NOT NULL AND tracking_no != ''";
   }
-  if (marketId) {
-    where += ' AND market_id = ?';
-    params.push(marketId);
+  if (marketId) { where += ' AND market_id = ?'; params.push(marketId); }
+  if (deliveryStatus) { where += ' AND delivery_status = ?'; params.push(deliveryStatus); }
+  if (search) {
+    where += " AND (order_id LIKE ? OR sub_order_id LIKE ? OR product_name_raw LIKE ?)";
+    const s = `%${search}%`;
+    params.push(s, s, s);
   }
 
-  const rows = await queryAll(
-    `SELECT id, market_id, sales_date, order_id, sub_order_id, product_name_raw, qty,
-            recipient_name, tracking_no, ship_date, address, postal_code, phone, mobile,
-            pantos_ord_id, hawb_no, delivery_status, delivery_status_dt
-     FROM order_items ${where}
-     ORDER BY sales_date DESC LIMIT ?`,
-    ...params, limit,
-  );
+  const [rows, countRow, unshippedCount, shippedCount, deliveryCounts] = await Promise.all([
+    queryAll(
+      `SELECT id, market_id, SUBSTR(sales_date, 1, 10) as sales_date, order_id, sub_order_id,
+              master_sku, product_name_raw, qty, settlement_amount,
+              recipient_name, customs_id, tracking_no, SUBSTR(ship_date, 1, 10) as ship_date,
+              delivery_status, delivery_status_dt
+       FROM order_items ${where}
+       ORDER BY sales_date DESC, id DESC LIMIT ? OFFSET ?`,
+      ...params, limit, offset,
+    ),
+    queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM order_items ${where}`, ...params),
+    queryOne<{ cnt: number }>(
+      `SELECT COUNT(*) as cnt FROM order_items WHERE order_status='normal' AND (tracking_no IS NULL OR tracking_no = '')`,
+    ),
+    queryOne<{ cnt: number }>(
+      `SELECT COUNT(*) as cnt FROM order_items WHERE order_status='normal' AND tracking_no IS NOT NULL AND tracking_no != ''`,
+    ),
+    // Delivery status counts
+    queryAll<{ delivery_status: string; cnt: number }>(
+      `SELECT COALESCE(delivery_status, '') as delivery_status, COUNT(*) as cnt
+       FROM order_items WHERE order_status='normal' AND tracking_no IS NOT NULL AND tracking_no != ''
+       GROUP BY delivery_status`,
+    ),
+  ]);
 
-  // Counts
-  const unshippedCount = await queryAll<{ market_id: string; cnt: number }>(
-    `SELECT market_id, COUNT(*) as cnt FROM order_items
-     WHERE order_status = 'normal' AND (tracking_no IS NULL OR tracking_no = '')
-     GROUP BY market_id`,
-  );
-
-  return NextResponse.json({ ok: true, orders: rows, unshippedCount });
+  return NextResponse.json({
+    ok: true,
+    orders: rows,
+    total: countRow?.cnt || 0,
+    unshipped: unshippedCount?.cnt || 0,
+    shipped: shippedCount?.cnt || 0,
+    deliveryCounts,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -66,11 +91,9 @@ export async function POST(req: NextRequest) {
   }
 
   const now = nowKST();
-  let updated = 0;
 
   const stmts = updates.map(u => {
     const shipDate = u.ship_date || now.substring(0, 10);
-    // Match by both order_id and sub_order_id if provided
     if (u.sub_order_id) {
       return {
         sql: `UPDATE order_items SET tracking_no = ?, ship_date = ?, updated_at = ?
@@ -85,13 +108,11 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  // Batch execute
   for (let i = 0; i < stmts.length; i += 80) {
     await executeBatch(stmts.slice(i, i + 80));
   }
-  updated = updates.length;
 
-  await writeAuditLog(user.user_id, 'tracking_update', 'order_items', '', undefined, undefined, undefined, 'success', `${updated}건 송장 업데이트`);
+  await writeAuditLog(user.user_id, 'tracking_update', 'order_items', '', undefined, undefined, undefined, 'success', `${updates.length}건 송장 업데이트`);
 
-  return NextResponse.json({ ok: true, message: `${updated}건 송장번호 업데이트 완료` });
+  return NextResponse.json({ ok: true, message: `${updates.length}건 송장번호 업데이트 완료` });
 }

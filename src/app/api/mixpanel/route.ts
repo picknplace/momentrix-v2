@@ -28,20 +28,29 @@ const MIXPANEL_CARDS: Record<number, { name: string; dim: string }> = {
   66838188: { name: '추이_금액', dim: 'timeseries' },
 };
 
+// Extract a numeric value — handles both plain numbers and nested {all: number} objects
+function numVal(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (v && typeof v === 'object' && 'all' in (v as Record<string, unknown>)) {
+    return numVal((v as Record<string, unknown>)['all']);
+  }
+  return 0;
+}
+
 // GAS-identical parsing: response is { results: { series: {...}, date_range: {...} } }
 function parseCardResult(raw: unknown, dim: string): unknown {
   if (!raw || typeof raw !== 'object') return null;
   const wrapper = raw as Record<string, unknown>;
   const results = wrapper.results as Record<string, unknown> | undefined;
   if (!results) return null;
-  const series = results.series as Record<string, Record<string, number>> | undefined;
+  const series = results.series as Record<string, Record<string, unknown>> | undefined;
   if (!series) return null;
 
   if (dim === 'none') {
     // Scalar — series[key]['all']
     const firstKey = Object.keys(series)[0];
     if (!firstKey) return 0;
-    return series[firstKey]['all'] ?? 0;
+    return numVal(series[firstKey]['all']);
   }
 
   if (dim === 'timeseries') {
@@ -52,13 +61,13 @@ function parseCardResult(raw: unknown, dim: string): unknown {
     return Object.entries(vals)
       .filter(([k]) => k !== 'all')
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({ date, value }));
+      .map(([date, value]) => ({ date, value: numVal(value) }));
   }
 
   // dim === 'items' (default) — all keys except '$overall'/'Formula', sorted desc, top 15
   return Object.entries(series)
     .filter(([name]) => name !== '$overall' && name !== 'Formula')
-    .map(([name, vals]) => ({ name, value: vals['all'] ?? 0 }))
+    .map(([name, vals]) => ({ name, value: numVal(vals['all']) }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 15);
 }

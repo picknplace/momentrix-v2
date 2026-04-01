@@ -58,6 +58,15 @@ const STATUS_COLORS: Record<string, string> = {
   refunded: 'bg-amber-900/50 text-amber-300',
   rolled_back: 'bg-gray-700/50 text-gray-400',
 };
+const STATUS_LABEL: Record<string, string> = {
+  normal: '정상', cancelled: '취소', refunded: '환불', rolled_back: '롤백',
+};
+
+function cleanTrackingNo(v: string) {
+  if (!v) return '';
+  const s = String(v);
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
 
 const chartOpts = {
   responsive: true, maintainAspectRatio: false,
@@ -540,12 +549,12 @@ export default function OrdersPage() {
                         <td className="py-1.5 pr-2 font-mono text-mx-cyan text-[10px]">{o.master_sku}</td>
                         <td className="py-1.5 pr-2">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[o.order_status] || ''}`}>
-                            {o.order_status}
+                            {STATUS_LABEL[o.order_status] || o.order_status}
                           </span>
                         </td>
                         <td className="py-1.5 pr-2">
                           {o.tracking_no ? (
-                            <span className="font-mono text-[10px] text-green-400">{o.tracking_no}</span>
+                            <span className="font-mono text-[10px] text-green-400">{cleanTrackingNo(o.tracking_no)}</span>
                           ) : o.order_status === 'normal' ? (
                             <input
                               type="text"

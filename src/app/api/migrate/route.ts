@@ -97,6 +97,9 @@ export async function POST(req: NextRequest) {
   const db = (env as Record<string, unknown>).DB as D1Database;
 
   try {
+    // Disable foreign key checks during migration
+    await db.prepare('PRAGMA foreign_keys = OFF').run();
+
     // Optionally clear existing data
     if (clear) {
       await db.prepare(`DELETE FROM ${table}`).run();
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
       order_items: ['import_id', 'market_id', 'order_id'],
       order_events: ['event_id', 'event_type'],
       sku_map: ['dailyshot_product_key'],
-      sku_master: ['master_sku'],
+      sku_master: ['master_sku', 'product_name'],
       cost_master: ['master_sku'],
       users: ['user_id'],
       audit_log: ['log_id', 'user_id'],
@@ -159,8 +162,13 @@ export async function POST(req: NextRequest) {
       inserted += stmts.length;
     }
 
+    // Re-enable foreign key checks
+    await db.prepare('PRAGMA foreign_keys = ON').run();
+
     return NextResponse.json({ ok: true, table, inserted });
   } catch (err) {
+    // Re-enable foreign key checks even on error
+    try { await db.prepare('PRAGMA foreign_keys = ON').run(); } catch { /* ignore */ }
     return NextResponse.json({
       ok: false,
       message: err instanceof Error ? err.message : String(err),

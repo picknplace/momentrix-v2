@@ -148,25 +148,35 @@ export async function POST(req: NextRequest) {
 
     const BATCH_SIZE = 50;
     let inserted = 0;
+    let skipped = 0;
     const pkCols = PK_COLUMNS[table] || [];
     const defaults = NOT_NULL_DEFAULTS[table] || {};
+    let autoIdx = 0;
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
       const stmts: D1PreparedStatement[] = [];
 
+      // Disable FK checks within this batch
+      stmts.push(db.prepare('PRAGMA foreign_keys = OFF'));
+
       for (const row of batch) {
-        // Skip rows where PK columns are empty (truly empty rows)
-        const missingPK = pkCols.some(c => {
+        // Check if ALL values are empty (truly empty row)
+        const allEmpty = columns.every(c => {
           const v = row[c];
           return v === undefined || v === null || v === '';
         });
-        if (missingPK) continue;
+        if (allEmpty) { skipped++; continue; }
 
         const vals = columns.map(col => {
-          const v = row[col];
-          // If value is empty/null, check for NOT NULL default
+          let v = row[col];
+          // If value is empty/null, check for NOT NULL default or auto-generate
           if (v === undefined || v === null || v === '') {
+            // Auto-generate PK if missing
+            if (pkCols.includes(col)) {
+              autoIdx++;
+              return `MIGRATE_${table}_${Date.now()}_${autoIdx}`;
+            }
             if (col in defaults) return defaults[col];
             return null;
           }
@@ -181,13 +191,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (stmts.length > 0) {
+      if (stmts.length > 1) { // > 1 because first is PRAGMA
         await db.batch(stmts);
       }
-      inserted += stmts.length;
+      inserted += stmts.length - 1; // subtract PRAGMA statement
     }
 
-    return NextResponse.json({ ok: true, table, inserted });
+    return NextResponse.json({ ok: true, table, inserted, skipped });
   } catch (err) {
     return NextResponse.json({
       ok: false,

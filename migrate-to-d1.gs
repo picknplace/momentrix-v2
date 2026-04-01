@@ -232,7 +232,8 @@ function migrateSheet(sheetName, tableName) {
     }
 
     total += body.inserted;
-    Logger.log('  ' + tableName + ' chunk ' + Math.floor(i/CHUNK+1) + ': ' + body.inserted + '건');
+    var skipMsg = body.skipped ? ' (스킵: ' + body.skipped + ')' : '';
+    Logger.log('  ' + tableName + ' chunk ' + Math.floor(i/CHUNK+1) + ': ' + body.inserted + '건' + skipMsg);
     Utilities.sleep(500);
   }
 

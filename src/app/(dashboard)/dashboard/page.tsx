@@ -438,6 +438,9 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          {/* ═══════════ AI Section ═══════════ */}
+          <AiSection />
+
           {/* ═══════════ Mixpanel Section (GAS-identical) ═══════════ */}
           <MixpanelSection
             mpData={mpData} mpLoading={mpLoading} mpCachedAt={mpCachedAt}
@@ -763,6 +766,153 @@ function MixpanelSection({ mpData, mpLoading, mpCachedAt, mpTrendData, loadMixpa
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   AI Section — 인사이트 + 챗봇
+   ═══════════════════════════════════════════════════ */
+
+function AiSection() {
+  const [insight, setInsight] = useState('');
+  const [insightAt, setInsightAt] = useState('');
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatHistory, setChatHistory] = useState<{ q: string; a: string }[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [usageData, setUsageData] = useState<{ totalCostKrw: number; totalCalls: number } | null>(null);
+
+  const loadInsight = useCallback(async (force = false) => {
+    setInsightLoading(true);
+    if (force) {
+      const res = await api<{ insight: string; cachedAt: string }>('ai/insight', { method: 'POST' });
+      if (res?.ok) { setInsight(res.insight); setInsightAt(res.cachedAt); }
+    } else {
+      const res = await api<{ insight: string; cachedAt: string }>('ai/insight');
+      if (res?.ok) { setInsight(res.insight); setInsightAt(res.cachedAt); }
+    }
+    setInsightLoading(false);
+  }, []);
+
+  const loadUsage = useCallback(async () => {
+    const res = await api<{ summary: { totalCostKrw: number; totalCalls: number } }>('ai/usage');
+    if (res?.ok) setUsageData(res.summary);
+  }, []);
+
+  useEffect(() => {
+    loadInsight();
+    loadUsage();
+  }, [loadInsight, loadUsage]);
+
+  const handleChat = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const q = chatInput.trim();
+    setChatInput('');
+    setChatLoading(true);
+    setChatHistory(prev => [...prev, { q, a: '...' }]);
+
+    const res = await api<{ answer: string }>('ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q }),
+    });
+
+    setChatHistory(prev => {
+      const updated = [...prev];
+      updated[updated.length - 1] = { q, a: res?.ok ? res.answer : '(오류 발생)' };
+      return updated;
+    });
+    setChatLoading(false);
+    loadUsage(); // refresh usage after chat
+  };
+
+  const QUICK_QUESTIONS = [
+    '이번 주 매출 어때?',
+    '취소율 높은 상품은?',
+    '데일리샷 vs 키햐 비교',
+    '발주해야 할 상품 추천',
+    '사케 카테고리 매출 추이',
+  ];
+
+  return (
+    <div className="border border-cyan-500/40 rounded-lg p-4 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-bold text-mx-text">AI 분석</h2>
+          {insightAt && (
+            <span className="text-[10px] text-mx-text-secondary">
+              {insightAt.substring(0, 16).replace('T', ' ')} 기준
+            </span>
+          )}
+          {usageData && (
+            <span className="text-[10px] text-mx-text-secondary">
+              이번달 비용: {usageData.totalCostKrw.toLocaleString()}원 ({usageData.totalCalls}회)
+            </span>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => loadInsight(true)} disabled={insightLoading}>
+          {insightLoading ? '분석 중...' : '갱신'}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* AI Insight */}
+        <Card>
+          <h3 className="text-xs font-bold text-mx-text mb-2">일일 인사이트</h3>
+          {insightLoading ? (
+            <p className="text-mx-text-secondary text-xs animate-pulse">AI가 데이터를 분석하고 있습니다...</p>
+          ) : insight ? (
+            <div className="text-xs text-mx-text leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto">
+              {insight}
+            </div>
+          ) : (
+            <p className="text-mx-text-secondary text-xs">인사이트 없음. 갱신 버튼을 눌러주세요.</p>
+          )}
+        </Card>
+
+        {/* AI Chat */}
+        <Card>
+          <h3 className="text-xs font-bold text-mx-text mb-2">데이터 질문</h3>
+
+          {/* Quick question buttons */}
+          <div className="flex flex-wrap gap-1 mb-2">
+            {QUICK_QUESTIONS.map(q => (
+              <button key={q} onClick={() => { setChatInput(q); }}
+                className="text-[10px] px-2 py-0.5 rounded bg-mx-border/30 text-mx-text-secondary hover:bg-mx-border/60 transition">
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* Chat history */}
+          <div className="max-h-[280px] overflow-y-auto mb-2 space-y-2">
+            {chatHistory.map((chat, i) => (
+              <div key={i}>
+                <div className="text-[11px] text-cyan-400 font-medium">{chat.q}</div>
+                <div className="text-[11px] text-mx-text leading-relaxed whitespace-pre-wrap ml-2 mt-0.5">
+                  {chat.a}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleChat()}
+              placeholder="예: 이번달 사케 매출 알려줘"
+              className="flex-1 bg-mx-bg border border-mx-border rounded px-2 py-1.5 text-xs text-mx-text placeholder:text-mx-text-secondary/50"
+            />
+            <Button variant="primary" size="sm" onClick={handleChat} disabled={chatLoading}>
+              {chatLoading ? '...' : '질문'}
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

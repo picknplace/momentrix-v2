@@ -106,22 +106,57 @@ export async function POST(req: NextRequest) {
     const BATCH_SIZE = 50;
     let inserted = 0;
 
+    // Required (NOT NULL) key columns per table — skip rows missing these
+    const requiredKeys: Record<string, string[]> = {
+      import_log: ['import_id', 'market_id'],
+      order_items: ['import_id', 'market_id', 'order_id'],
+      order_events: ['event_id', 'event_type'],
+      sku_map: ['dailyshot_product_key'],
+      sku_master: ['master_sku'],
+      cost_master: ['master_sku'],
+      users: ['user_id'],
+      audit_log: ['log_id', 'user_id'],
+      daily_summary: ['sales_date'],
+      market_summary: ['market_id'],
+      sku_summary: ['master_sku'],
+      inventory: ['master_sku'],
+      suppliers: ['supplier_id'],
+      supplier_products: ['supplier_id'],
+      purchase_orders: ['po_id'],
+      po_items: ['po_id'],
+      price_history: ['supplier_id'],
+    };
+    const reqCols = requiredKeys[table] || [];
+
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
-      const stmts = batch.map(row => {
+      const stmts: D1PreparedStatement[] = [];
+
+      for (const row of batch) {
+        // Skip rows where required columns are empty/null
+        const missing = reqCols.some(c => {
+          const v = row[c];
+          return v === undefined || v === null || v === '';
+        });
+        if (missing) continue;
+
         const vals = columns.map(col => {
           const v = row[col];
           if (v === undefined || v === null || v === '') return null;
           return v;
         });
         const placeholders = columns.map(() => '?').join(',');
-        return db.prepare(
-          `INSERT OR REPLACE INTO ${table} (${columns.join(',')}) VALUES (${placeholders})`
-        ).bind(...vals);
-      });
+        stmts.push(
+          db.prepare(
+            `INSERT OR REPLACE INTO ${table} (${columns.join(',')}) VALUES (${placeholders})`
+          ).bind(...vals)
+        );
+      }
 
-      await db.batch(stmts);
-      inserted += batch.length;
+      if (stmts.length > 0) {
+        await db.batch(stmts);
+      }
+      inserted += stmts.length;
     }
 
     return NextResponse.json({ ok: true, table, inserted });

@@ -67,7 +67,8 @@ const chartOpts = {
   },
 };
 
-function fmtMan(v: number) { return Math.round(v / 10000) + '만'; }
+function fmtMan(v: number) { return Math.round(v / 10000).toLocaleString() + '만'; }
+function fmtN(v: number) { return v.toLocaleString(); }
 
 type ViewMode = 'all' | 'unshipped' | 'cancelled';
 
@@ -214,7 +215,7 @@ export default function OrdersPage() {
 
   // Chart data
   const trendData = analytics ? {
-    labels: analytics.trend.map(t => period === 'day' ? t.period.substring(5) : t.period),
+    labels: analytics.trend.map(t => period === 'day' ? t.period.substring(5, 10) : t.period),
     datasets: [{
       label: '정산액',
       data: analytics.trend.map(t => t.settlement),
@@ -225,7 +226,7 @@ export default function OrdersPage() {
   } : null;
 
   const cancelData = analytics ? {
-    labels: analytics.cancelRate.map(c => period === 'day' ? c.period.substring(5) : c.period),
+    labels: analytics.cancelRate.map(c => period === 'day' ? c.period.substring(5, 10) : c.period),
     datasets: [
       { label: '전체', data: analytics.cancelRate.map(c => c.total), backgroundColor: 'rgba(59,130,246,0.6)' },
       { label: '취소', data: analytics.cancelRate.map(c => c.cancelled), backgroundColor: 'rgba(239,68,68,0.7)' },
@@ -285,12 +286,12 @@ export default function OrdersPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {[
-          { label: '총 주문', value: totalOrders + '건', color: 'text-blue-400' },
+          { label: '총 주문', value: fmtN(totalOrders) + '건', color: 'text-blue-400' },
           { label: '정산액', value: fmtMan(totalSettlement) + '원', color: 'text-green-400' },
           { label: '취소율', value: cancelPct + '%', color: parseFloat(cancelPct) > 5 ? 'text-red-400' : 'text-mx-text' },
           { label: '출고율', value: shipPct + '%', color: 'text-emerald-400' },
-          { label: '미출고', value: totalUnshipped + '건', color: totalUnshipped > 0 ? 'text-red-400' : 'text-mx-text' },
-          { label: '재주문 고객', value: (analytics?.repeatCustomers?.length || 0) + '명', color: 'text-amber-400' },
+          { label: '미출고', value: fmtN(totalUnshipped) + '건', color: totalUnshipped > 0 ? 'text-red-400' : 'text-mx-text' },
+          { label: '재주문 고객', value: fmtN(analytics?.repeatCustomers?.length || 0) + '명', color: 'text-amber-400' },
         ].map(k => (
           <Card key={k.label} className="!p-2 text-center">
             <p className="text-[10px] text-mx-text-secondary">{k.label}</p>
@@ -338,7 +339,7 @@ export default function OrdersPage() {
               {analytics.byMarket.map(m => (
                 <div key={m.market_id} className="flex justify-between text-[10px]">
                   <span className="text-mx-text-secondary">{MKT[m.market_id] || m.market_id}</span>
-                  <span className="text-mx-text">{m.orders}건 / {fmtMan(m.settlement)}원 / 취소 {m.cancelled}</span>
+                  <span className="text-mx-text">{fmtN(m.orders)}건 / {fmtMan(m.settlement)}원 / 취소 {fmtN(m.cancelled)}</span>
                 </div>
               ))}
             </div>
@@ -392,8 +393,8 @@ export default function OrdersPage() {
                             {r.key_type === 'customs' ? '통관부호' : '수취인'}
                           </span>
                         </td>
-                        <td className="py-1 pr-2 text-right font-bold text-amber-400">{r.order_count}회</td>
-                        <td className="py-1 pr-2 text-right">{r.total_qty}개</td>
+                        <td className="py-1 pr-2 text-right font-bold text-amber-400">{fmtN(r.order_count)}회</td>
+                        <td className="py-1 pr-2 text-right">{fmtN(r.total_qty)}개</td>
                         <td className="py-1 pr-2 text-right">{formatKRW(r.total_settlement)}</td>
                         <td className="py-1 pr-2">
                           {marketList.map(m => (
@@ -452,7 +453,7 @@ export default function OrdersPage() {
         {/* Unshipped counts by market */}
         {unshippedCounts.map(c => (
           <span key={c.market_id} className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/30 text-red-300">
-            {MKT[c.market_id] || c.market_id}: {c.cnt}
+            {MKT[c.market_id] || c.market_id}: {fmtN(c.cnt)}
           </span>
         ))}
 
@@ -473,7 +474,7 @@ export default function OrdersPage() {
           </>
         )}
         <Button variant="outline" size="sm" onClick={() => { setPage(1); load(); }}>조회</Button>
-        <span className="text-xs text-mx-text-secondary ml-auto">{total}건</span>
+        <span className="text-xs text-mx-text-secondary ml-auto">{fmtN(total)}건</span>
       </div>
 
       {/* Orders Table */}

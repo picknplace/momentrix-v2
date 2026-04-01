@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   else if (period === 'year') groupExpr = `SUBSTR(sales_date, 1, 4)`;
   else groupExpr = `sales_date`;
 
-  const [trend, byMarket, cancelRate, shipStatus, repeatCustomers] = await Promise.all([
+  const [trend, byMarket, cancelRate, shipStatus, repeatCustomers, repeatOrders] = await Promise.all([
     // 1. 주문 추이 (period별)
     queryAll<{ period: string; orders: number; qty: number; settlement: number }>(`
       SELECT ${groupExpr} as period, COUNT(*) as orders, COALESCE(SUM(qty),0) as qty,
@@ -64,30 +64,48 @@ export async function GET(req: NextRequest) {
       GROUP BY market_id
     `, from),
 
-    // 5. 재주문 고객 (recipient_name 또는 customs_id 동일)
-    queryAll<{ key_val: string; key_type: string; order_count: number; total_qty: number; total_settlement: number; first_date: string; last_date: string }>(`
-      SELECT key_val, key_type, order_count, total_qty, total_settlement, first_date, last_date FROM (
-        SELECT recipient_name as key_val, 'name' as key_type,
-               COUNT(*) as order_count, SUM(qty) as total_qty, SUM(settlement_amount) as total_settlement,
-               MIN(sales_date) as first_date, MAX(sales_date) as last_date
-        FROM order_items
-        WHERE order_status='normal' AND recipient_name IS NOT NULL AND recipient_name != ''
-          AND sales_date >= ?
-        GROUP BY recipient_name
-        HAVING COUNT(*) >= 2
-        UNION ALL
+    // 5. 재주문 고객 — 통관고유부호 우선, 없으면 수취인명 기반
+    queryAll<{ key_val: string; key_type: string; order_count: number; total_qty: number; total_settlement: number; first_date: string; last_date: string; markets: string }>(`
+      SELECT key_val, key_type, order_count, total_qty, total_settlement, first_date, last_date, markets FROM (
         SELECT customs_id as key_val, 'customs' as key_type,
                COUNT(*) as order_count, SUM(qty) as total_qty, SUM(settlement_amount) as total_settlement,
-               MIN(sales_date) as first_date, MAX(sales_date) as last_date
+               MIN(sales_date) as first_date, MAX(sales_date) as last_date,
+               GROUP_CONCAT(DISTINCT market_id) as markets
         FROM order_items
         WHERE order_status='normal' AND customs_id IS NOT NULL AND customs_id != ''
-          AND recipient_name IS NULL OR recipient_name = ''
           AND sales_date >= ?
         GROUP BY customs_id
         HAVING COUNT(*) >= 2
+        UNION ALL
+        SELECT recipient_name as key_val, 'name' as key_type,
+               COUNT(*) as order_count, SUM(qty) as total_qty, SUM(settlement_amount) as total_settlement,
+               MIN(sales_date) as first_date, MAX(sales_date) as last_date,
+               GROUP_CONCAT(DISTINCT market_id) as markets
+        FROM order_items
+        WHERE order_status='normal' AND recipient_name IS NOT NULL AND recipient_name != ''
+          AND (customs_id IS NULL OR customs_id = '')
+          AND sales_date >= ?
+        GROUP BY recipient_name
+        HAVING COUNT(*) >= 2
       ) ORDER BY order_count DESC LIMIT 50
+    `, from, from),
+
+    // 6. 재주문 고객 플랫폼별 주문 순서 (market_id + sales_date 순)
+    queryAll<{ key_val: string; market_id: string; sales_date: string; order_id: string }>(`
+      SELECT key_val, market_id, sales_date, order_id FROM (
+        SELECT customs_id as key_val, market_id, sales_date, order_id
+        FROM order_items
+        WHERE order_status='normal' AND customs_id IS NOT NULL AND customs_id != ''
+          AND sales_date >= ?
+        UNION ALL
+        SELECT recipient_name as key_val, market_id, sales_date, order_id
+        FROM order_items
+        WHERE order_status='normal' AND recipient_name IS NOT NULL AND recipient_name != ''
+          AND (customs_id IS NULL OR customs_id = '')
+          AND sales_date >= ?
+      ) ORDER BY key_val, sales_date
     `, from, from),
   ]);
 
-  return NextResponse.json({ ok: true, trend, byMarket, cancelRate, shipStatus, repeatCustomers });
+  return NextResponse.json({ ok: true, trend, byMarket, cancelRate, shipStatus, repeatCustomers, repeatOrders });
 }

@@ -17,6 +17,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'cancel_reason', 'refund_reason', 'sub_order_id', 'tracking_no', 'recipient_name',
     'ship_date', 'created_at', 'updated_at', 'customs_id', 'phone', 'mobile',
     'postal_code', 'address', 'order_note', 'remark', 'supplier_name', 'ec_status',
+    'pantos_ord_id', 'hawb_no', 'delivery_status', 'delivery_status_dt',
   ],
   import_log: [
     'import_id', 'market_id', 'file_name', 'sales_date', 'upload_status',
@@ -122,8 +123,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, message: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await req.json() as { table: string; rows: Record<string, unknown>[]; clear?: boolean };
-  const { table, rows, clear } = body;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body = await req.json() as any;
+
+  // action: 'update_pantos' → pantos_ord_id/hawb_no 일괄 업데이트 (PATCH 대체)
+  if (body.action === 'update_pantos' && body.updates?.length) {
+    const db = (env as Record<string, unknown>).DB as D1Database;
+    try {
+      const BATCH = 50;
+      let updated = 0;
+      for (let i = 0; i < body.updates.length; i += BATCH) {
+        const chunk = body.updates.slice(i, i + BATCH);
+        const stmts: D1PreparedStatement[] = [];
+        for (const u of chunk) {
+          const sets: string[] = [];
+          const params: unknown[] = [];
+          if (u.pantos_ord_id !== undefined) { sets.push('pantos_ord_id = ?'); params.push(u.pantos_ord_id); }
+          if (u.hawb_no !== undefined) { sets.push('hawb_no = ?'); params.push(u.hawb_no); }
+          if (u.delivery_status !== undefined) { sets.push('delivery_status = ?'); params.push(u.delivery_status); }
+          if (!sets.length) continue;
+          if (u.sub_order_id) {
+            stmts.push(db.prepare(`UPDATE order_items SET ${sets.join(', ')} WHERE order_id = ? OR sub_order_id = ?`).bind(...params, u.order_id, u.sub_order_id));
+          } else {
+            stmts.push(db.prepare(`UPDATE order_items SET ${sets.join(', ')} WHERE order_id = ?`).bind(...params, u.order_id));
+          }
+        }
+        if (stmts.length) {
+          await db.batch(stmts);
+          updated += stmts.length;
+        }
+      }
+      return NextResponse.json({ ok: true, updated });
+    } catch (err) {
+      return NextResponse.json({ ok: false, message: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
+  }
+
+  const { table, rows, clear } = body as { table: string; rows: Record<string, unknown>[]; clear?: boolean };
 
   if (!table || !rows?.length) {
     return NextResponse.json({ ok: false, message: 'table and rows required' }, { status: 400 });
@@ -198,6 +234,75 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, table, inserted, skipped });
+  } catch (err) {
+    return NextResponse.json({
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/migrate — Bulk UPDATE specific columns by matching key
+ * Body: { table, key, keyColumn, updates: [{ keyValue, col1, col2, ... }] }
+ * Used for backfilling pantos_ord_id, hawb_no, delivery_status etc.
+ */
+export async function PATCH(req: NextRequest) {
+  const { env } = getRequestContext();
+  const secret = req.headers.get('x-cron-secret') || req.headers.get('authorization')?.replace('Bearer ', '');
+
+  if (secret !== (env as Record<string, string>).CRON_SECRET) {
+    return NextResponse.json({ ok: false, message: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = await req.json() as {
+    updates: { order_id: string; sub_order_id?: string; pantos_ord_id?: string; hawb_no?: string; delivery_status?: string }[];
+  };
+
+  if (!body.updates?.length) {
+    return NextResponse.json({ ok: false, message: 'updates required' }, { status: 400 });
+  }
+
+  const db = (env as Record<string, unknown>).DB as D1Database;
+
+  try {
+    const BATCH = 50;
+    let updated = 0;
+
+    for (let i = 0; i < body.updates.length; i += BATCH) {
+      const chunk = body.updates.slice(i, i + BATCH);
+      const stmts: D1PreparedStatement[] = [];
+
+      for (const u of chunk) {
+        const sets: string[] = [];
+        const params: unknown[] = [];
+
+        if (u.pantos_ord_id !== undefined) { sets.push('pantos_ord_id = ?'); params.push(u.pantos_ord_id); }
+        if (u.hawb_no !== undefined) { sets.push('hawb_no = ?'); params.push(u.hawb_no); }
+        if (u.delivery_status !== undefined) { sets.push('delivery_status = ?'); params.push(u.delivery_status); }
+
+        if (!sets.length) continue;
+
+        if (u.sub_order_id) {
+          stmts.push(
+            db.prepare(`UPDATE order_items SET ${sets.join(', ')} WHERE order_id = ? OR sub_order_id = ?`)
+              .bind(...params, u.order_id, u.sub_order_id)
+          );
+        } else {
+          stmts.push(
+            db.prepare(`UPDATE order_items SET ${sets.join(', ')} WHERE order_id = ?`)
+              .bind(...params, u.order_id)
+          );
+        }
+      }
+
+      if (stmts.length) {
+        await db.batch(stmts);
+        updated += stmts.length;
+      }
+    }
+
+    return NextResponse.json({ ok: true, updated });
   } catch (err) {
     return NextResponse.json({
       ok: false,
